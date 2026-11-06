@@ -545,6 +545,14 @@ function Home({
                 onChange={(e) => setCode(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && code.trim()) onJoin(code.trim());
+                  // 提权运行的原生粘贴会被系统拦掉，这里自己接管 Cmd/Ctrl+V。
+                  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
+                    e.preventDefault();
+                    void api
+                      .pasteText()
+                      .then((text) => setCode(text.trim()))
+                      .catch(() => undefined);
+                  }
                 }}
                 placeholder="粘贴朋友发来的邀请码 EGL1-…"
                 aria-label="邀请码"
@@ -667,7 +675,18 @@ function Room({
               {copied ? "已复制" : "复制"}
             </button>
           </div>
-          <div className="invite">{room.invite}</div>
+          <div
+        className="invite"
+        onKeyDown={(event) => {
+          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+            event.preventDefault();
+            void api.copyText(room.invite).catch(() => undefined);
+          }
+        }}
+        tabIndex={0}
+      >
+        {room.invite}
+      </div>
           <p className="note" style={{ marginTop: 12 }}>
             候选地址 {room.candidates.join("  ·  ") || "—"}
           </p>
