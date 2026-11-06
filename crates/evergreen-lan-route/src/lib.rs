@@ -293,7 +293,9 @@ pub mod spec {
                 "action=allow",
                 &program,
                 "enable=yes",
-                "profile=private",
+                // 必须覆盖全部配置文件：Windows 常把新网络判为「公用」，
+                // 只写 private 时规则不生效，入站 UDP 会被静默丢弃。
+                "profile=any",
             ])]
         }
     }

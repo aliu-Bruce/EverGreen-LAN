@@ -133,7 +133,9 @@ fn explain(err: RoomError) -> String {
         RoomError::Route(err) => format!("配置地址或路由失败：{err}"),
         RoomError::NoAnswer => "主机没有回应我们的加入请求。".to_string(),
         RoomError::Core(evergreen_lan_core::Error::Timeout) => {
-            "等待主机超时。请确认对方在线，且邀请码没有过期。".to_string()
+            "没有收到主机回应。请确认：主机仍在房间里、邀请码是最新的、双方的防火墙允许 UDP。\
+             已尝试的地址记录在日志里。"
+                .to_string()
         }
         RoomError::Core(evergreen_lan_core::Error::Invite(message)) => {
             format!("邀请码无效：{message}")

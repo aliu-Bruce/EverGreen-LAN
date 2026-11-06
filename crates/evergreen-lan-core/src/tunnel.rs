@@ -18,10 +18,10 @@ use crate::session::PeerSession;
 use crate::{Error, Result};
 
 /// 重发消息 1 之前等待回复的时长。
-pub const DIAL_ATTEMPT_TIMEOUT: Duration = Duration::from_millis(300);
+pub const DIAL_ATTEMPT_TIMEOUT: Duration = Duration::from_millis(700);
 
 /// 竞速候选地址期间重发消息 1 的次数。
-pub const DIAL_ATTEMPTS: usize = 10;
+pub const DIAL_ATTEMPTS: usize = 12;
 
 /// 主机回送消息 2 的份数。
 pub const HANDSHAKE_RESPONSE_WRITES: usize = 3;
@@ -106,7 +106,16 @@ pub async fn dial(
         }
     }
 
-    let endpoint = accepted.ok_or(Error::Timeout)?;
+    let endpoint = accepted.ok_or_else(|| {
+        // 超时是排查里最常见的一类，把尝试过的地址写进日志，
+        // 用户可以直接把日志发过来定位。
+        tracing::warn!(
+            endpoints = ?endpoints,
+            attempts = DIAL_ATTEMPTS,
+            "始终没有收到主机回应"
+        );
+        Error::Timeout
+    })?;
     let hs = handshake.ok_or(Error::Timeout)?;
     let remote_static = hs
         .remote_static()
