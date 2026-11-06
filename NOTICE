@@ -1,0 +1,20 @@
+EverGreen LAN
+Copyright 2026 the EverGreen LAN authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It bundles the following third-party components, which keep their own licences
+and are NOT covered by the Apache-2.0 grant above:
+
+* Wintun (wintun.dll)
+  Copyright (C) 2018-2021 WireGuard LLC.
+  Distributed under the WireGuard LLC "Prebuilt Binaries License" reproduced at
+  https://www.wintun.net/ . Fetched by scripts/fetch-wintun.ps1 and shipped in
+  the installer next to the executable.
+
+* Instrument Serif, Inter Tight, IBM Plex Mono
+  Licensed under the SIL Open Font License 1.1.
+  Full text: apps/desktop/public/fonts/LICENSE.txt
+
+Rust and npm dependencies are ordinary third-party works under their own
+licences; see Cargo.lock and package-lock.json for the exact set.

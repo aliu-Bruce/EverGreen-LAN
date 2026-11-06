@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "name": "海盐",
+  "hint": "冷蓝 · 细衬线",
+  "mode": "light",
+  "vars": {
+    "bg": "#eef3f6",
+    "bg-deep": "#e2eaef",
+    "ink": "#0d1b24",
+    "ink-soft": "#2f4350",
+    "ink-faint": "#6f8492",
+    "rule": "rgba(13, 27, 36, 0.14)",
+    "rule-strong": "rgba(13, 27, 36, 0.38)",
+    "accent": "#1f6f8b",
+    "accent-ink": "#eef3f6",
+    "alert": "#9c3b2f",
+    "grain": "0.03",
+    "radius": "2px",
+    "text-scale": "1",
+    "display-font": "var(--font-sans)",
+    "display-cjk": "var(--font-cjk-sans)",
+    "display-weight": "500",
+    "display-tracking": "-0.015em",
+    "display-leading": "0.98"
+  }
+}

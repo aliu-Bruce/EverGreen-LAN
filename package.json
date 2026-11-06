@@ -1,0 +1,21 @@
+{
+  "name": "evergreen-lan",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EverGreen LAN — a zero-server virtual LAN for Minecraft and other LAN games.",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @evergreen-lan/desktop",
+    "build": "npm run build -w @evergreen-lan/desktop",
+    "tauri": "npm run tauri -w @evergreen-lan/desktop",
+    "desktop": "npm run tauri -w @evergreen-lan/desktop -- dev",
+    "test:core": "cargo test -p evergreen-lan-core --lib"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "playwright-core": "^1.64.1"
+  }
+}

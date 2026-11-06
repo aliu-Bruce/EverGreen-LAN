@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "EverGreen LAN",
+  "version": "0.1.0",
+  "identifier": "com.evergreenlan.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "EverGreen LAN",
+        "width": 1120,
+        "height": 780,
+        "minWidth": 880,
+        "minHeight": 620,
+        "resizable": true,
+        "decorations": false,
+        "transparent": false,
+        "center": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "publisher": "EverGreen LAN",
+    "copyright": "Apache-2.0",
+    "shortDescription": "Zero-server virtual LAN for Minecraft",
+    "longDescription": "EverGreen LAN links players on different networks as if they shared a switch. Traffic is direct, encrypted and never relayed by anyone.",
+    "category": "Utility",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../../../LICENSE": "LICENSE",
+      "../../../NOTICE": "NOTICE",
+      "../../../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
+    }
+  }
+}

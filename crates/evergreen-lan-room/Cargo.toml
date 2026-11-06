@@ -1,0 +1,22 @@
+[package]
+name = "evergreen-lan-room"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Room runtime for EverGreen LAN: wires the virtual adapter, tunnel and router together"
+
+[dependencies]
+evergreen-lan-core = { workspace = true }
+evergreen-lan-tun = { workspace = true }
+evergreen-lan-route = { workspace = true }
+tokio = { workspace = true, features = ["rt", "net", "time", "sync", "macros"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+if-addrs = "0.15"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_UI_Shell"] }

@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/desktop/src-tauri",
+  "crates/evergreen-lan-core",
+  "crates/evergreen-lan-tun",
+  "crates/evergreen-lan-route",
+  "crates/evergreen-lan-room",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.77.2"
+repository = "https://github.com/evergreen-lan/evergreen-lan"
+
+[workspace.dependencies]
+libc = "0.2"
+evergreen-lan-core = { path = "crates/evergreen-lan-core" }
+evergreen-lan-tun = { path = "crates/evergreen-lan-tun" }
+evergreen-lan-route = { path = "crates/evergreen-lan-route" }
+evergreen-lan-room = { path = "crates/evergreen-lan-room" }
+
+tokio = { version = "1", default-features = false }
+snow = "0.10"
+rand = "0.8"
+base64 = "0.22"
+flate2 = "1"
+serde = { version = "1", features = ["derive"] }
+bincode = "1.3"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+socket2 = "0.5"
+sha2 = "0.10"
+hex = "0.4"
+libloading = "0.8"
+windows-sys = "0.59"
+bytes = "1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2

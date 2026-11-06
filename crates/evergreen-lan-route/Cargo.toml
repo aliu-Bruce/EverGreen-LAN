@@ -1,0 +1,11 @@
+[package]
+name = "evergreen-lan-route"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Virtual subnet configuration for EverGreen LAN"
+
+[dependencies]
+thiserror = { workspace = true }
+tracing = { workspace = true }

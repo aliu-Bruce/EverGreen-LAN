@@ -1,0 +1,110 @@
+name: build
+
+# 三平台原生构建：每个平台在自己的 runner 上编译，不做交叉编译。
+# 产物在 Actions 运行页面的 Artifacts 区下载。
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # 个别目标属于「尽力而为」：平台本身缺少必要的系统库时允许失败，
+    # 不影响其他目标出包。
+    continue-on-error: ${{ matrix.optional || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---------------- Windows（NSIS 安装包，附带对应架构的 wintun.dll）
+          - name: windows-x86
+            os: windows-latest
+            target: i686-pc-windows-msvc
+            wintun: x86
+          - name: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            wintun: amd64
+          - name: windows-arm64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+            wintun: arm64
+
+          # ---------------- macOS（.app + .dmg）
+          - name: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - name: macos-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+
+          # ---------------- Linux（deb + rpm + AppImage）
+          - name: linux-x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          # 32 位 Linux 需要 i386 版的 WebKitGTK，Ubuntu 官方源没有，默认允许失败。
+          - name: linux-x86
+            os: ubuntu-22.04
+            target: i686-unknown-linux-gnu
+            optional: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Linux 需要 WebKitGTK 与打包工具；32 位目标额外打开 i386 架构。
+      - name: Linux 依赖
+        if: runner.os == 'Linux'
+        run: |
+          if [ "${{ matrix.target }}" = "i686-unknown-linux-gnu" ]; then
+            sudo dpkg --add-architecture i386
+          fi
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm
+
+      # Wintun 是第三方驱动，不随仓库分发；按目标架构取对应 DLL。
+      - name: 准备 wintun.dll
+        if: runner.os == 'Windows'
+        run: pwsh -File scripts/fetch-wintun.ps1 -Architecture ${{ matrix.wintun }} -CopyToTarget
+
+      - run: npm ci
+
+      - name: 单元测试
+        run: cargo test --workspace --lib
+
+      - name: 构建安装包
+        run: npx tauri build --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evergreen-lan-${{ matrix.name }}
+          path: |
+            target/${{ matrix.target }}/release/bundle/**
+          if-no-files-found: warn

@@ -1,0 +1,49 @@
+# Supply-chain policy for `cargo deny`.
+#
+# Not wired into CI yet; run locally with:
+#   cargo install cargo-deny
+#   cargo deny check
+#
+# The intent is that a dependency cannot enter the tree unless its licence is on
+# the allow-list and it has no open RustSec advisory.
+
+[graph]
+targets = [
+  { triple = "x86_64-pc-windows-msvc" },
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# Permissive and weak-copyleft licences only. GPL/AGPL are deliberately absent:
+# this project ships an Apache-2.0 binary and cannot carry strong copyleft.
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-1-Clause",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "Unlicense",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "MPL-2.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+deny = [
+  # Telemetry and crash-reporting SDKs stay out of this product.
+  { name = "sentry" },
+  { name = "sentry-core" },
+]

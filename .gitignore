@@ -1,0 +1,28 @@
+# Rust
+target/
+**/*.rs.bk
+
+# Node
+node_modules/
+apps/desktop/dist/
+.pnpm-store/
+
+# Tauri
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/target/
+
+# Local artifacts
+artifacts/
+*.log
+*.pdb
+*.dmp
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime scratch
+.egl-*/
+
+# Third-party driver fetched by scripts/fetch-wintun.ps1
+apps/desktop/src-tauri/resources/wintun.dll

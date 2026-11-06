@@ -1,0 +1,26 @@
+[package]
+name = "evergreen-lan-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Protocol core for EverGreen LAN: invite codes, IP classification, STUN, encrypted P2P tunnel."
+
+[dependencies]
+tokio = { workspace = true, features = ["rt", "net", "time", "sync", "macros", "io-util"] }
+snow = { workspace = true }
+rand = { workspace = true }
+base64 = { workspace = true }
+flate2 = { workspace = true }
+serde = { workspace = true }
+bincode = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+socket2 = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "sync", "macros", "io-util"] }
+tracing-subscriber = { workspace = true }
