@@ -662,6 +662,12 @@ function Room({
           <p className="note" style={{ marginTop: 12 }}>
             候选地址 {room.candidates.join("  ·  ") || "—"}
           </p>
+          {room.cgnat && (
+            <p className="alert" style={{ marginTop: 10 }}>
+              主机的公网地址落在运营商级 NAT（100.64.0.0/10）后面。这种网络既不转发入站，也不保证端点可预测，
+              打洞基本无法成功——换一个不走运营商 NAT 的网络做主机，或改用同一局域网。
+            </p>
+          )}
           {!room.reachable && (
             <p className="alert" style={{ marginTop: 10 }}>
               只拿到局域网地址：同一网络的朋友可以直接连，异地朋友连不上。通常是代理软件占用了出口，或 STUN
@@ -1532,6 +1538,7 @@ export default function App() {
           virtualIp: "10.66.0.1",
           candidates: ["192.168.1.23:49851", "114.514.191.981:55964"],
           reachable: true,
+          cgnat: false,
           firewallOk: true,
           peers: [
             { name: "Alice", virtualIp: "10.66.0.2", role: "guest", endpoint: "203.0.113.7:41234", rttMs: 23 },

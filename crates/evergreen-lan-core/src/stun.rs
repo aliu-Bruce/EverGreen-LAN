@@ -228,10 +228,21 @@ pub fn is_routable(ip: IpAddr) -> bool {
                 || v4.is_link_local()
                 || v4.is_broadcast()
                 || v4.is_unspecified()
-                || v4.is_documentation())
+                || v4.is_documentation()
+                || is_cgnat(Ipv4Addr::from(v4)))
         }
         IpAddr::V6(_) => false,
     }
+}
+
+/// 是否属于运营商级 NAT 的共享地址段 `100.64.0.0/10`。
+///
+/// 手机热点、部分宽带都会把用户放在这一层。地址看起来是公网，但运营商的
+/// NAT 既不转发入站，也不保证端点可预测，因此打洞基本不可能成功。
+/// 把它单独识别出来，才能在界面上给出准确的原因。
+pub fn is_cgnat(ip: Ipv4Addr) -> bool {
+    let [first, second, ..] = ip.octets();
+    first == 100 && (64..128).contains(&second)
 }
 
 #[cfg(test)]
@@ -279,6 +290,17 @@ mod tests {
         assert_eq!(&req[2..4], &[0x00, 0x00]);
         assert_eq!(&req[4..8], &MAGIC_COOKIE.to_be_bytes());
         assert_eq!(&req[8..20], &[1u8; 12]);
+    }
+
+    #[test]
+    fn cgnat_is_not_routable() {
+        use std::net::Ipv4Addr as V4;
+        assert!(is_cgnat(V4::new(100, 64, 0, 1)));
+        assert!(is_cgnat(V4::new(100, 127, 255, 254)));
+        assert!(!is_cgnat(V4::new(100, 63, 0, 1)));
+        assert!(!is_cgnat(V4::new(100, 128, 0, 1)));
+        assert!(!is_routable("100.64.1.2".parse().unwrap()));
+        assert!(is_routable("114.114.114.114".parse().unwrap()));
     }
 
     #[test]

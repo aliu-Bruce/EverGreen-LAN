@@ -44,6 +44,8 @@ pub struct RoomView {
     pub candidates: Vec<String>,
     /// 是否至少有一个候选地址可从本网络外部访问。
     pub reachable: bool,
+    /// 是否存在运营商级 NAT 的候选地址。
+    pub cgnat: bool,
     /// 入站防火墙规则是否创建成功；`None` 表示本机不是托管方。
     pub firewall_ok: Option<bool>,
 }
@@ -78,6 +80,12 @@ impl RoomView {
                 .endpoints()
                 .iter()
                 .any(|addr| evergreen_lan_core::stun::is_routable(addr.ip())),
+            cgnat: room.invite.endpoints().iter().any(|addr| {
+                evergreen_lan_core::stun::is_cgnat(match addr.ip() {
+                    std::net::IpAddr::V4(v4) => v4,
+                    std::net::IpAddr::V6(_) => std::net::Ipv4Addr::UNSPECIFIED,
+                })
+            }),
             firewall_ok: room.firewall_ok,
         }
     }

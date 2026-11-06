@@ -19,6 +19,8 @@ export interface RoomView {
   peers: Peer[];
   candidates: string[];
   reachable: boolean;
+  /** 主机在运营商级 NAT 后面，直连基本不可能。 */
+  cgnat: boolean;
   firewallOk: boolean | null;
 }
 
