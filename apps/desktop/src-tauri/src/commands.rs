@@ -347,21 +347,25 @@ pub fn copy_text(text: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        // pbcopy 在多数情况下可用；提权后若失效，退回 AppleScript，
-        // 后者总是作用于当前登录用户的剪贴板。
-        if pipe_to("pbcopy", &[], &text).is_ok() {
-            return Ok(());
-        }
+        // 提权后 pbcopy 写入的往往不是登录用户的剪贴板，因此优先 AppleScript：
+        // 它经 Apple Events 交给当前会话处理，root 身份下依然有效。
         let script = format!("set the clipboard to {}", applescript_string(&text));
-        let output = std::process::Command::new("osascript")
+        match std::process::Command::new("osascript")
             .args(["-e", &script])
             .output()
-            .map_err(|err| format!("无法写入剪贴板：{err}"))?;
-        return if output.status.success() {
-            Ok(())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
-        };
+        {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) => {
+                let reason = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                tracing::warn!(%reason, "osascript 写入剪贴板失败，改用 pbcopy");
+                pipe_to("pbcopy", &[], &text)
+                    .inspect_err(|err| tracing::warn!(%err, "pbcopy 同样失败"))
+            }
+            Err(err) => {
+                tracing::warn!(%err, "无法启动 osascript，改用 pbcopy");
+                pipe_to("pbcopy", &[], &text)
+            }
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -443,8 +447,11 @@ pub fn paste_text() -> Result<String, String> {
 
     #[cfg(target_os = "macos")]
     {
-        let read = std::process::Command::new("pbpaste").output();
-        if let Ok(output) = read {
+        // 与写入同理：先问 AppleScript，失败再退回 pbpaste。
+        if let Ok(output) = std::process::Command::new("osascript")
+            .args(["-e", "the clipboard as text"])
+            .output()
+        {
             if output.status.success() {
                 let text = String::from_utf8_lossy(&output.stdout)
                     .trim_end()
@@ -452,17 +459,14 @@ pub fn paste_text() -> Result<String, String> {
                 if !text.is_empty() {
                     return Ok(text);
                 }
+            } else {
+                tracing::warn!("osascript 读取剪贴板失败，改用 pbpaste");
             }
         }
 
-        // 提权后 pbpaste 可能读到空内容，改用 AppleScript 再试一次。
-        let output = std::process::Command::new("osascript")
-            .args(["-e", "the clipboard as text"])
+        let output = std::process::Command::new("pbpaste")
             .output()
             .map_err(|err| format!("无法读取剪贴板：{err}"))?;
-        if !output.status.success() {
-            return Err("剪贴板为空".to_string());
-        }
         let text = String::from_utf8_lossy(&output.stdout)
             .trim_end()
             .to_string();

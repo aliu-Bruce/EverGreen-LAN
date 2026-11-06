@@ -487,6 +487,15 @@ function Home({
 }) {
   const [name, setName] = useState("我的森林");
   const [code, setCode] = useState("");
+  const [pasteFailed, setPasteFailed] = useState(false);
+
+  const pasteFromClipboard = () => {
+    setPasteFailed(false);
+    void api
+      .pasteText()
+      .then((text) => setCode(text.trim()))
+      .catch(() => setPasteFailed(true));
+  };
 
   return (
     <>
@@ -548,10 +557,7 @@ function Home({
                   // 提权运行的原生粘贴会被系统拦掉，这里自己接管 Cmd/Ctrl+V。
                   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
                     e.preventDefault();
-                    void api
-                      .pasteText()
-                      .then((text) => setCode(text.trim()))
-                      .catch(() => undefined);
+                    pasteFromClipboard();
                   }
                 }}
                 placeholder="粘贴朋友发来的邀请码 EGL1-…"
@@ -565,12 +571,7 @@ function Home({
                 className="btn text paste"
                 disabled={busy}
                 title="从系统剪贴板读取邀请码"
-                onClick={() =>
-                  void api
-                    .pasteText()
-                    .then((text) => setCode(text.trim()))
-                    .catch(() => undefined)
-                }
+                onClick={pasteFromClipboard}
               >
                 粘贴
               </button>
@@ -586,6 +587,12 @@ function Home({
         </div>
 
         {error && <p className="alert">{error}</p>}
+
+        {pasteFailed && (
+          <p className="alert">
+            读不到系统剪贴板。可以手动选中邀请码复制；如果按钮和快捷键都失效，说明当前权限下系统不允许访问剪贴板。
+          </p>
+        )}
 
         <p className="note" style={{ marginTop: 18 }}>
           邀请码就是房间钥匙，等同于密码，不要公开分享。
