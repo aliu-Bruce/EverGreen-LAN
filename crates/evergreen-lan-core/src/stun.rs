@@ -229,7 +229,7 @@ pub fn is_routable(ip: IpAddr) -> bool {
                 || v4.is_broadcast()
                 || v4.is_unspecified()
                 || v4.is_documentation()
-                || is_cgnat(Ipv4Addr::from(v4)))
+                || is_cgnat(v4))
         }
         IpAddr::V6(_) => false,
     }
