@@ -20,9 +20,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     # 单个目标的硬上限，避免卡在下载或 apt 上无限占用额度。
     timeout-minutes: 45
-    # 个别目标属于「尽力而为」：平台本身缺少必要的系统库时允许失败，
-    # 不影响其他目标出包。
-    continue-on-error: ${{ matrix.optional || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -56,11 +53,6 @@ jobs:
           - name: linux-arm64
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-          # 32 位 Linux 需要 i386 版的 WebKitGTK，Ubuntu 官方源没有，默认允许失败。
-          - name: linux-x86
-            os: ubuntu-22.04
-            target: i686-unknown-linux-gnu
-            optional: true
 
     steps:
       - uses: actions/checkout@v4
@@ -78,15 +70,12 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      # Linux 需要 WebKitGTK 与打包工具；32 位目标额外打开 i386 架构。
+      # Linux 需要 WebKitGTK 与打包工具。
       - name: Linux 依赖
         if: runner.os == 'Linux'
         timeout-minutes: 20
         run: |
           set -euo pipefail
-          if [ "${{ matrix.target }}" = "i686-unknown-linux-gnu" ]; then
-            sudo dpkg --add-architecture i386
-          fi
           sudo apt-get update -qq
           sudo apt-get install -y -o APT::Get::Assume-Yes=true --no-install-recommends \
             libwebkit2gtk-4.1-dev \
@@ -96,13 +85,6 @@ jobs:
             patchelf \
             rpm
 
-          # 32 位目标尽力而为：补上 i386 的构建依赖，WebKitGTK 官方没有 i386 包，
-          # 因此这一步失败不影响其他目标。
-          if [ "${{ matrix.target }}" = "i686-unknown-linux-gnu" ]; then
-            sudo apt-get install -y --no-install-recommends \
-              gcc-multilib pkg-config \
-              libglib2.0-dev:i386 || true
-          fi
 
       # Wintun 是第三方驱动，不随仓库分发；按目标架构取对应 DLL。
       - name: 准备 wintun.dll

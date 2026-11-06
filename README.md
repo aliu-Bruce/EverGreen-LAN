@@ -47,7 +47,7 @@ EverGreen LAN 让身处不同网络的玩家像坐在同一个交换机下一样
 |---|---|---|---|
 | Windows 10 / 11 | Wintun | UAC，应用内可重启发起重启 | ✅ 已实机验证 |
 | macOS 11+ | `utun` | 必须以 root 运行（`sudo`） | 🧪 已交叉编译，**未实机验证** |
-| Linux | `/dev/net/tun` | root 或 `CAP_NET_ADMIN`；有 polkit 时可用 `pkexec` 提权 | 🧪 已交叉编译，**未实机验证** |
+| Linux x86_64 / arm64 | `/dev/net/tun` | root 或 `CAP_NET_ADMIN`；有 polkit 时可用 `pkexec` 提权 | 🧪 已交叉编译，**未实机验证** |
 
 macOS 与 Linux 的代码路径已通过 `cargo check --target` 交叉编译，命令构造也有单元测试，
 但还没有在真机上跑过联机。第一次在 Mac 上试时请留意日志里的失败原因。
