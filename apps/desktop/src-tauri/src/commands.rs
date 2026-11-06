@@ -347,8 +347,25 @@ pub fn copy_text(text: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        // 提权后 pbcopy 写入的往往不是登录用户的剪贴板，因此优先 AppleScript：
-        // 它经 Apple Events 交给当前会话处理，root 身份下依然有效。
+        // 首选：借登录用户的会话执行 pbcopy，读写的就是用户自己的剪贴板。
+        if let Some(mut command) = as_console_user("/usr/bin/pbcopy", &[]) {
+            if let Ok(mut child) = command
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .spawn()
+            {
+                use std::io::Write;
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                if child.wait().map(|status| status.success()).unwrap_or(false) {
+                    return Ok(());
+                }
+            }
+            tracing::warn!("以登录用户身份写入剪贴板失败，退回 AppleScript");
+        }
+
+        // 其次：AppleScript 经 Apple Events 交给会话处理。
         let script = format!("set the clipboard to {}", applescript_string(&text));
         match std::process::Command::new("osascript")
             .args(["-e", &script])
@@ -380,6 +397,36 @@ pub fn copy_text(text: String) -> Result<(), String> {
         }
         return Err("找不到可用的剪贴板工具（wl-copy 或 xclip）".to_string());
     }
+}
+
+/// 当前登录图形会话的用户 ID。
+///
+/// root 进程直接访问剪贴板时，拿到的是系统会话里的另一个剪贴板，
+/// 用户粘贴不到。通过 `launchctl asuser` 借用登录用户身份就能读写同一个剪贴板。
+#[cfg(target_os = "macos")]
+fn console_uid() -> Option<u32> {
+    let output = std::process::Command::new("/usr/bin/stat")
+        .args(["-f", "%u", "/dev/console"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
+}
+
+/// 以 root 身份时，把命令放进登录用户的会话里执行。
+#[cfg(target_os = "macos")]
+fn as_console_user(program: &str, args: &[&str]) -> Option<std::process::Command> {
+    // SAFETY：geteuid 只读取当前进程的有效用户 ID。
+    if unsafe { libc::geteuid() } != 0 {
+        return None;
+    }
+    let uid = console_uid()?;
+    let mut command = std::process::Command::new("/bin/launchctl");
+    command.arg("asuser").arg(uid.to_string()).arg(program);
+    command.args(args);
+    Some(command)
 }
 
 /// 把文本通过子进程的 stdin 写入系统剪贴板。
@@ -447,7 +494,22 @@ pub fn paste_text() -> Result<String, String> {
 
     #[cfg(target_os = "macos")]
     {
-        // 与写入同理：先问 AppleScript，失败再退回 pbpaste。
+        // 首选：借登录用户的会话执行 pbpaste。
+        if let Some(mut command) = as_console_user("/usr/bin/pbpaste", &[]) {
+            if let Ok(output) = command.output() {
+                if output.status.success() {
+                    let text = String::from_utf8_lossy(&output.stdout)
+                        .trim_end()
+                        .to_string();
+                    if !text.is_empty() {
+                        return Ok(text);
+                    }
+                }
+            }
+            tracing::warn!("以登录用户身份读取剪贴板失败，退回 AppleScript");
+        }
+
+        // 与写入同理：再问 AppleScript，最后退回 pbpaste。
         if let Ok(output) = std::process::Command::new("osascript")
             .args(["-e", "the clipboard as text"])
             .output()
