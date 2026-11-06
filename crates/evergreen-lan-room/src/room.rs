@@ -168,6 +168,13 @@ pub struct Room {
     task: JoinHandle<()>,
 }
 
+/// 主机监听的固定 UDP 端口。
+///
+/// 端口如果每次启动都随机，旧邀请码就会「看起来正常但永远连不上」——
+/// 客户端会把握手发到一个没人监听的端口。固定端口让邀请码在重启后依然有效，
+/// 也便于在路由器上做端口映射。
+pub const HOST_PORT: u16 = 39271;
+
 impl Room {
     /// 创建 room 并开始接受访客。
     pub async fn host(cfg: RoomConfig) -> Result<Self, RoomError> {
@@ -219,7 +226,19 @@ impl Room {
         device: DeviceChannels,
         resources: Option<Resources>,
     ) -> Result<Self, RoomError> {
-        let socket = UdpSocket::bind(cfg.bind).await?;
+        // 测试会显式指定 127.0.0.1:0，此时保持随机端口，避免并行用例抢占；
+        // 生产环境的默认绑定是 0.0.0.0:0，改用固定端口让邀请码可复用。
+        let socket = if cfg.bind.ip().is_unspecified() && cfg.bind.port() == 0 {
+            match UdpSocket::bind(("0.0.0.0", HOST_PORT)).await {
+                Ok(socket) => socket,
+                Err(err) => {
+                    tracing::warn!(%err, port = HOST_PORT, "固定端口被占用，改用临时端口");
+                    UdpSocket::bind(cfg.bind).await?
+                }
+            }
+        } else {
+            UdpSocket::bind(cfg.bind).await?
+        };
 
         let candidates = gather_candidates(&socket, &cfg).await;
         let invite = InviteCode::new(cfg.name.clone(), cfg.identity.public_bytes(), candidates)?;
