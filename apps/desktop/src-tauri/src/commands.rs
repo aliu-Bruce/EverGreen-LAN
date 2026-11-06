@@ -332,6 +332,59 @@ fn wintun_present() -> bool {
     candidates.iter().any(|path| path.is_file())
 }
 
+/* -------------------------------------------------------------- 剪贴板 */
+
+/// 把文本写入系统剪贴板。
+///
+/// 不走 WebView 的 `navigator.clipboard`：WKWebView 不把它视作安全上下文，
+/// 在 macOS 上会直接抛错，表现为「点了复制没反应」。
+#[tauri::command]
+pub fn copy_text(text: String) -> Result<(), String> {
+    #[cfg(windows)]
+    let candidates: &[(&str, &[&str])] = &[("clip", &[])];
+
+    #[cfg(target_os = "macos")]
+    let candidates: &[(&str, &[&str])] = &[("pbcopy", &[])];
+
+    #[cfg(target_os = "linux")]
+    let candidates: &[(&str, &[&str])] =
+        &[("wl-copy", &[]), ("xclip", &["-selection", "clipboard"])];
+
+    let mut last_error = String::from("找不到可用的剪贴板工具");
+
+    for (program, args) in candidates {
+        let spawned = std::process::Command::new(program)
+            .args(*args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+
+        let mut child = match spawned {
+            Ok(child) => child,
+            Err(err) => {
+                last_error = format!("无法启动 {program}：{err}");
+                continue;
+            }
+        };
+
+        let written = match child.stdin.take() {
+            Some(mut stdin) => {
+                use std::io::Write;
+                stdin.write_all(text.as_bytes()).and_then(|_| stdin.flush())
+            }
+            None => Err(std::io::Error::other("无法写入剪贴板进程")),
+        };
+
+        match written.and_then(|_| child.wait().map(|_| ())) {
+            Ok(()) => return Ok(()),
+            Err(err) => last_error = format!("{program} 写入失败：{err}"),
+        }
+    }
+
+    Err(last_error)
+}
+
 /* ------------------------------------------------------------ 外部链接 */
 
 /// 用系统默认浏览器打开一个链接。

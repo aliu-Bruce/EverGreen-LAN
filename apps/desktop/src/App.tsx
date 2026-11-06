@@ -873,7 +873,10 @@ function Settings({
                   className="btn text"
                   onClick={() => {
                     const text = help === "json" ? THEME_EXAMPLE : THEME_AI_PROMPT;
-                    void navigator.clipboard.writeText(text).catch(() => undefined);
+                    void api
+                      .copyText(text)
+                      .catch(() => navigator.clipboard.writeText(text))
+                      .catch(() => undefined);
                   }}
                 >
                   复制
@@ -1619,11 +1622,18 @@ export default function App() {
   const copyInvite = async () => {
     if (!room) return;
     try {
-      await navigator.clipboard.writeText(room.invite);
+      // WebView 的 clipboard API 在 WKWebView 上会被拒绝，优先走系统工具。
+      await api.copyText(room.invite);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
-      setError("无法写入剪贴板，请手动选中邀请码复制。");
+      try {
+        await navigator.clipboard.writeText(room.invite);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1600);
+      } catch {
+        setError("无法写入剪贴板，请手动选中邀请码复制。");
+      }
     }
   };
 

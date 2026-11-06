@@ -37,6 +37,7 @@ pub fn run() {
             commands::log_file_path,
             commands::open_log_folder,
             commands::open_url,
+            commands::copy_text,
             commands::parse_theme_json,
         ])
         .run(tauri::generate_context!())
