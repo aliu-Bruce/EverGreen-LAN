@@ -1530,6 +1530,24 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setTheme]);
 
+  // 托盘里「离开房间」后，界面需要同步清空状态。
+  useEffect(() => {
+    if (preview) return;
+    let unlisten: (() => void) | undefined;
+    import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen("room-left", () => {
+          setRoom(null);
+          setShowSettings(false);
+        }),
+      )
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => undefined);
+    return () => unlisten?.();
+  }, [preview]);
+
   useEffect(() => {
     if (preview) {
       setStatus({

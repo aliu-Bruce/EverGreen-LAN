@@ -5,8 +5,11 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Manager};
+
 use state::AppState;
-use tauri::Manager;
 
 /// 构建并运行 EverGreen LAN 桌面应用。
 pub fn run() {
@@ -24,6 +27,8 @@ pub fn run() {
                 }
             }
             tracing::info!(version = env!("CARGO_PKG_VERSION"), "应用启动");
+            build_tray(app)?;
+            hide_on_close(app)?;
             Ok(())
         })
         .manage(AppState::new())
@@ -43,6 +48,82 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 EverGreen LAN");
+}
+
+/// 创建系统托盘：显示窗口、离开房间、退出。
+///
+/// 房间在后台线程里保持运行，因此关闭窗口只是隐藏到托盘，
+/// 托管中的房间不会因为误关窗口而中断。
+fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+    let leave = MenuItem::with_id(app, "leave", "离开房间", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &leave, &quit])?;
+
+    let mut builder = TrayIconBuilder::with_id("main-tray")
+        .tooltip("EverGreen LAN")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_main_window(app),
+            "leave" => leave_room_from_tray(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        });
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        builder = builder.icon(icon);
+    }
+
+    builder.build(app)?;
+    Ok(())
+}
+
+/// 把主窗口显示出来并置前。
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+/// 从托盘里退出当前房间，并通知界面刷新。
+fn leave_room_from_tray(app: &tauri::AppHandle) {
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = handle.state::<AppState>();
+        let mut guard = state.room().await;
+        if let Some(room) = guard.take() {
+            room.shutdown().await;
+            tracing::info!("已从托盘退出房间");
+        }
+        let _ = handle.emit("room-left", ());
+    });
+}
+
+/// 关闭窗口时隐藏到托盘，而不是退出进程。
+fn hide_on_close(app: &mut tauri::App) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("main") {
+        let handle = window.clone();
+        window.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = handle.hide();
+            }
+        });
+    }
+    Ok(())
 }
 
 /// 日志目录：`%LOCALAPPDATA%\EverGreenLAN\logs`。
