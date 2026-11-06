@@ -1113,8 +1113,10 @@ mod tests {
             .expect("valid invite");
         bogus.psk = [9u8; 32];
 
+        // 必须留足握手预算：Windows 会因为 ICMP 端口不可达立刻返回，
+        // 而 Unix 要等满 DIAL_ATTEMPTS × DIAL_ATTEMPT_TIMEOUT 才会报超时。
         let result = tokio::time::timeout(
-            Duration::from_secs(6),
+            Duration::from_secs(20),
             Room::join_with(other, bogus, channels),
         )
         .await;
