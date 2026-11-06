@@ -995,6 +995,10 @@ mod tests {
 
     #[test]
     fn adapter_name_is_stable() {
+        #[cfg(windows)]
         assert_eq!(adapter_name(), "EverGreen LAN");
+        // Unix 的名称只是建议值：Linux 受 15 字符上限约束，macOS 由内核分配。
+        #[cfg(unix)]
+        assert!(!adapter_name().is_empty());
     }
 }
