@@ -279,15 +279,9 @@ pub mod spec {
             ])]
         }
 
-        /// netsh 会把 `name=` 后面的值按空格切开；规则名含空格时必须加引号，
-        /// 否则 `name=EverGreen LAN` 里的 `LAN` 会被当成下一个参数而整条命令失败。
-        fn quote_name(rule_name: &str) -> String {
-            format!("name=\"{rule_name}\"")
-        }
-
         pub fn reset_firewall(_executable: &str, rule_name: &str) -> Vec<Vec<String>> {
-            let name = quote_name(rule_name);
-            let subnet = quote_name(&format!("{rule_name}（虚拟网段）"));
+            let name = format!("name={rule_name}");
+            let subnet = format!("name={rule_name}-subnet");
             vec![
                 netsh(&["advfirewall", "firewall", "delete", "rule", &name]),
                 netsh(&["advfirewall", "firewall", "delete", "rule", &subnet]),
@@ -301,9 +295,11 @@ pub mod spec {
             // 2. 放行来自 `10.66.0.0/16` 的入站流量，让虚拟网段里的游戏
             //    （Minecraft 的 javaw、Terraria 等）能被连上。只放行本程序时，
             //    注入到系统栈的包仍会因为目标进程未授权而被防火墙丢弃。
-            let program = format!("program=\"{executable}\"");
-            let name = quote_name(rule_name);
-            let subnet_name = quote_name(&format!("{rule_name}（虚拟网段）"));
+            // 不要在这里加引号：Command 传参时已按需引用，
+            // 多一层会让 netsh 收到带字面引号的路径并直接报错。
+            let program = format!("program={executable}");
+            let name = format!("name={rule_name}");
+            let subnet_name = format!("name={rule_name}-subnet");
             let subnet = netsh(&[
                 "advfirewall",
                 "firewall",
@@ -472,7 +468,7 @@ mod tests {
 
     #[test]
     fn windows_address_command() {
-        let commands = win::add_address("EverGreen LAN", [10, 66, 0, 1], 16);
+        let commands = win::add_address("EverGreenLAN", [10, 66, 0, 1], 16);
         assert_eq!(commands.len(), 1);
         assert_eq!(
             commands[0],
@@ -482,7 +478,7 @@ mod tests {
                 "ipv4",
                 "add",
                 "address",
-                "EverGreen LAN",
+                "EverGreenLAN",
                 "10.66.0.1",
                 "255.255.0.0"
             ]
@@ -493,13 +489,14 @@ mod tests {
     }
 
     #[test]
-    fn windows_firewall_quotes_spaced_paths() {
-        let commands = win::add_firewall("C:\\Apps\\Ever Green\\a.exe", "EverGreen LAN");
+    fn windows_firewall_keeps_paths_unquoted() {
+        // 含空格路径同样不加内层引号：Command 传参时会整体引用。
+        let commands = win::add_firewall("C:\\Apps\\Ever Green\\a.exe", "EverGreenLAN");
         let program = commands[0]
             .iter()
             .find(|arg| arg.starts_with("program="))
             .expect("program 参数存在");
-        assert_eq!(program, "program=\"C:\\Apps\\Ever Green\\a.exe\"");
+        assert_eq!(program, "program=C:\\Apps\\Ever Green\\a.exe");
     }
 
     #[test]
@@ -534,26 +531,26 @@ mod tests {
 
     #[test]
     fn windows_firewall_covers_virtual_subnet() {
-        let commands = win::add_firewall("C:\\Apps\\a.exe", "EverGreen LAN");
+        let commands = win::add_firewall("C:\\Apps\\a.exe", "EverGreenLAN");
         assert_eq!(commands.len(), 2, "程序规则与网段规则都要有");
         let subnet = &commands[1];
         assert!(subnet.iter().any(|arg| arg == "remoteip=10.66.0.0/16"));
-        // 规则名必须带引号，否则 netsh 会把它拆成多个参数。
+        // 规则名不含空格，避免 netsh 把它拆成多个参数。
+        assert!(commands[0].iter().any(|arg| arg == "name=EverGreenLAN"));
+        assert!(subnet.iter().any(|arg| arg == "name=EverGreenLAN-subnet"));
+        // program= 的值不能自带引号，否则 netsh 报「无效字符」。
         assert!(commands[0]
             .iter()
-            .any(|arg| arg == "name=\"EverGreen LAN\""));
-        assert!(subnet
-            .iter()
-            .any(|arg| arg == "name=\"EverGreen LAN（虚拟网段）\""));
+            .any(|arg| arg == "program=C:\\Apps\\a.exe"));
         assert!(subnet.iter().any(|arg| arg == "profile=any"));
         // 拆规则时必须两条都删。
-        let reset = win::reset_firewall("C:\\Apps\\a.exe", "EverGreen LAN");
+        let reset = win::reset_firewall("C:\\Apps\\a.exe", "EverGreenLAN");
         assert_eq!(reset.len(), 2);
     }
 
     #[test]
     fn macos_firewall_allows_the_binary() {
-        let commands = mac::add_firewall("/Applications/A.app/Contents/MacOS/a", "EverGreen LAN");
+        let commands = mac::add_firewall("/Applications/A.app/Contents/MacOS/a", "EverGreenLAN");
         assert_eq!(commands.len(), 2);
         assert!(commands[0].iter().any(|arg| arg == "--add"));
         assert!(commands[1].iter().any(|arg| arg == "--unblockapp"));
@@ -563,7 +560,7 @@ mod tests {
     #[test]
     fn teardown_reverses_in_order() {
         let mut iface = VirtualInterface {
-            name: "EverGreen LAN".into(),
+            name: "EverGreenLAN".into(),
             applied: vec![
                 Step::Address {
                     ip: [10, 66, 0, 1],
