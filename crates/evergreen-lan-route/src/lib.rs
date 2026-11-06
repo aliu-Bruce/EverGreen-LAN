@@ -275,28 +275,52 @@ pub mod spec {
 
         pub fn reset_firewall(rule_name: &str) -> Vec<Vec<String>> {
             let name = format!("name={rule_name}");
-            vec![netsh(&["advfirewall", "firewall", "delete", "rule", &name])]
+            let subnet = format!("name={rule_name}（虚拟网段）");
+            vec![
+                netsh(&["advfirewall", "firewall", "delete", "rule", &name]),
+                netsh(&["advfirewall", "firewall", "delete", "rule", &subnet]),
+            ]
         }
 
         pub fn add_firewall(executable: &str, rule_name: &str) -> Vec<Vec<String>> {
-            // netsh 自行解析 `program=` 的值：路径含空格时必须加内层引号，
-            // 否则它会把路径截断，创建一条指向不存在程序的规则。
+            // 两条规则缺一不可：
+            //
+            // 1. 放行本程序，让虚拟网卡的 UDP 隧道本身能收包；
+            // 2. 放行来自 `10.66.0.0/16` 的入站流量，让虚拟网段里的游戏
+            //    （Minecraft 的 javaw、Terraria 等）能被连上。只放行本程序时，
+            //    注入到系统栈的包仍会因为目标进程未授权而被防火墙丢弃。
             let program = format!("program=\"{executable}\"");
             let name = format!("name={rule_name}");
-            vec![netsh(&[
+            let subnet_name = format!("name={rule_name}（虚拟网段）");
+            let subnet = netsh(&[
                 "advfirewall",
                 "firewall",
                 "add",
                 "rule",
-                &name,
+                &subnet_name,
                 "dir=in",
                 "action=allow",
-                &program,
+                "remoteip=10.66.0.0/16",
                 "enable=yes",
-                // 必须覆盖全部配置文件：Windows 常把新网络判为「公用」，
-                // 只写 private 时规则不生效，入站 UDP 会被静默丢弃。
                 "profile=any",
-            ])]
+            ]);
+            vec![
+                netsh(&[
+                    "advfirewall",
+                    "firewall",
+                    "add",
+                    "rule",
+                    &name,
+                    "dir=in",
+                    "action=allow",
+                    &program,
+                    "enable=yes",
+                    // 必须覆盖全部配置文件：Windows 常把新网络判为「公用」，
+                    // 只写 private 时规则不生效，入站 UDP 会被静默丢弃。
+                    "profile=any",
+                ]),
+                subnet,
+            ]
         }
     }
 
@@ -487,6 +511,18 @@ mod tests {
 
         let mtu = linux::set_mtu("evergreen0", 1200);
         assert!(mtu[0].contains(&"1200".to_string()));
+    }
+
+    #[test]
+    fn windows_firewall_covers_virtual_subnet() {
+        let commands = win::add_firewall("C:\\Apps\\a.exe", "EverGreen LAN");
+        assert_eq!(commands.len(), 2, "程序规则与网段规则都要有");
+        let subnet = &commands[1];
+        assert!(subnet.iter().any(|arg| arg == "remoteip=10.66.0.0/16"));
+        assert!(subnet.iter().any(|arg| arg == "profile=any"));
+        // 拆规则时必须两条都删。
+        let reset = win::reset_firewall("EverGreen LAN");
+        assert_eq!(reset.len(), 2);
     }
 
     #[test]

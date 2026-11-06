@@ -66,8 +66,8 @@ pub fn log_file_path() -> PathBuf {
 fn init_tracing() {
     use tracing_subscriber::EnvFilter;
 
-    let filter =
-        EnvFilter::try_from_env("EVERGREEN_LAN_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_env("EVERGREEN_LAN_LOG")
+        .unwrap_or_else(|_| EnvFilter::new("info,evergreen_lan_room=debug"));
 
     let mirror_stdout = cfg!(debug_assertions);
     let writer = match open_log_file() {

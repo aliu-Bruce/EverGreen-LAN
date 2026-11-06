@@ -248,6 +248,16 @@ impl Room {
             VirtualInterface::configure(adapter.name(), ip, VIRTUAL_PREFIX, TUNNEL_MTU as u16)?;
         iface.add_route(MINECRAFT_LAN_MULTICAST, 32)?;
 
+        // 访客同样可能被连（例如主机加入访客开的局域网世界），
+        // 因此两边都要放行虚拟网段。
+        if let Ok(exe) = std::env::current_exe() {
+            if let Err(err) =
+                evergreen_lan_route::allow_firewall(&exe.to_string_lossy(), "EverGreen LAN")
+            {
+                tracing::warn!(%err, "无法添加防火墙规则");
+            }
+        }
+
         let device = crate::device::spawn_tun(session);
         let resources = Resources {
             _iface: iface,
