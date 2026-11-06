@@ -975,7 +975,7 @@ mod imp {
             assert_eq!(sanitize_name("EverGreen LAN"), "evergreen-lan");
             assert_eq!(sanitize_name(""), "evergreen");
             assert_eq!(sanitize_name("a/b c"), "a-b-c");
-            assert!(sanitize_name("x".repeat(40)).len() <= 15);
+            assert!(sanitize_name(&"x".repeat(40)).len() <= 15);
         }
     }
 }
