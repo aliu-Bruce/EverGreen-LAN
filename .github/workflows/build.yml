@@ -39,12 +39,11 @@ jobs:
             wintun: arm64
 
           # ---------------- macOS（.app + .dmg）
-          - name: macos-arm64
+          # 只出一个通用包：同时包含 arm64 与 x86_64，用户不会装错架构。
+          - name: macos-universal
             os: macos-latest
-            target: aarch64-apple-darwin
-          - name: macos-x64
-            os: macos-latest
-            target: x86_64-apple-darwin
+            target: universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
 
           # ---------------- Linux（deb + rpm + AppImage）
           - name: linux-x64
@@ -64,7 +63,8 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          # macOS 通用包需要同时装两个架构的标准库。
+          targets: ${{ matrix.rust-targets || matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
