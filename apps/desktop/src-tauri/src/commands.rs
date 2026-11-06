@@ -103,7 +103,7 @@ fn needs_admin_hint() -> String {
     }
     #[cfg(target_os = "macos")]
     {
-        "创建虚拟网卡需要 root 权限。请在终端执行：sudo /Applications/EverGreen\\ LAN.app/Contents/MacOS/evergreen-lan"
+        "创建虚拟网卡需要管理员授权。点界面上的「以管理员身份重启」即可，系统会弹出密码框。"
             .to_string()
     }
     #[cfg(target_os = "linux")]
@@ -121,7 +121,7 @@ fn missing_backend_hint() -> String {
     }
     #[cfg(target_os = "macos")]
     {
-        "无法打开 utun 设备。macOS 需要 root 权限才能创建虚拟网卡。".to_string()
+        "无法打开 utun 设备。请先点「以管理员身份重启」取得授权。".to_string()
     }
     #[cfg(target_os = "linux")]
     {
@@ -241,10 +241,31 @@ pub fn relaunch_elevated() -> Result<(), String> {
     }
     #[cfg(target_os = "macos")]
     {
-        let exe = std::env::current_exe()
-            .map(|path| path.display().to_string())
-            .unwrap_or_else(|_| "evergreen-lan".to_string());
-        Err(format!("macOS 无法从应用内提权，请在终端执行：sudo {exe}"))
+        // macOS 没有 UAC。用 osascript 触发系统自带的授权对话框，
+        // 用户只需输一次密码，不必打开终端。
+        let exe = std::env::current_exe().map_err(|err| format!("无法定位程序：{err}"))?;
+        let path = exe
+            .display()
+            .to_string()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        let script = format!(
+            "do shell script \"\\\"{path}\\\" > /dev/null 2>&1 &\" with administrator privileges"
+        );
+        match std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .status()
+        {
+            Ok(status) if status.success() => {
+                std::process::exit(0);
+            }
+            Ok(status) => Err(format!(
+                "授权未完成（osascript 退出码 {}）",
+                status.code().unwrap_or(-1)
+            )),
+            Err(err) => Err(format!("无法调起授权对话框：{err}")),
+        }
     }
 }
 

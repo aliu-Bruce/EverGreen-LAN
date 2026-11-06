@@ -140,11 +140,17 @@ impl Drop for VirtualInterface {
 /// 只有 Windows 需要这一步：缺少规则时防火墙会静默丢弃其他玩家发往
 /// 虚拟适配器的报文。macOS 与 Linux 默认不拦，直接返回成功。
 pub fn allow_firewall(executable: &str, rule_name: &str) -> Result<()> {
-    for command in platform::reset_firewall(rule_name) {
+    for command in platform::reset_firewall(executable, rule_name) {
         let _ = run(&command);
     }
     for command in platform::add_firewall(executable, rule_name) {
-        run(&command)?;
+        // Windows 的规则缺失会直接导致联机失败，因此错误要冒泡；
+        // macOS/Linux 上这一步属于锦上添花，失败只记日志。
+        match run(&command) {
+            Ok(()) => {}
+            Err(err) if cfg!(windows) => return Err(err),
+            Err(err) => tracing::warn!(%err, "无法添加防火墙规则"),
+        }
     }
     Ok(())
 }
@@ -273,7 +279,7 @@ pub mod spec {
             ])]
         }
 
-        pub fn reset_firewall(rule_name: &str) -> Vec<Vec<String>> {
+        pub fn reset_firewall(_executable: &str, rule_name: &str) -> Vec<Vec<String>> {
             let name = format!("name={rule_name}");
             let subnet = format!("name={rule_name}（虚拟网段）");
             vec![
@@ -371,12 +377,21 @@ pub mod spec {
             vec![join("route", &["-n", "delete", "-net", &target])]
         }
 
-        pub fn reset_firewall(_rule_name: &str) -> Vec<Vec<String>> {
-            Vec::new()
+        /// 系统防火墙的授权工具。
+        const FIREWALL_TOOL: &str = "/usr/libexec/ApplicationFirewall/socketfilterfw";
+
+        pub fn reset_firewall(executable: &str, _rule_name: &str) -> Vec<Vec<String>> {
+            // 先移除旧条目，保证每次拿到的是当前二进制路径。
+            vec![join(FIREWALL_TOOL, &["--remove", executable])]
         }
 
-        pub fn add_firewall(_executable: &str, _rule_name: &str) -> Vec<Vec<String>> {
-            Vec::new()
+        pub fn add_firewall(executable: &str, _rule_name: &str) -> Vec<Vec<String>> {
+            // macOS 的防火墙按「程序」放行，没有按网段的概念：
+            // --add 把二进制加入列表，--unblockapp 解除入站拦截。
+            vec![
+                join(FIREWALL_TOOL, &["--add", executable]),
+                join(FIREWALL_TOOL, &["--unblockapp", executable]),
+            ]
         }
     }
 
@@ -422,11 +437,12 @@ pub mod spec {
             vec![join("ip", &["route", "del", &cidr])]
         }
 
-        pub fn reset_firewall(_rule_name: &str) -> Vec<Vec<String>> {
+        pub fn reset_firewall(_executable: &str, _rule_name: &str) -> Vec<Vec<String>> {
             Vec::new()
         }
 
         pub fn add_firewall(_executable: &str, _rule_name: &str) -> Vec<Vec<String>> {
+            // 桌面发行版默认不拦入站；需要时由用户自行配置 nftables/ufw。
             Vec::new()
         }
     }
@@ -492,9 +508,6 @@ mod tests {
         assert_eq!(route[0][0], "route");
         assert!(route[0].contains(&"224.0.2.60/32".to_string()));
         assert!(route[0].contains(&"utun4".to_string()));
-
-        // macOS 不需要防火墙规则。
-        assert!(mac::add_firewall("x", "y").is_empty());
     }
 
     #[test]
@@ -521,8 +534,17 @@ mod tests {
         assert!(subnet.iter().any(|arg| arg == "remoteip=10.66.0.0/16"));
         assert!(subnet.iter().any(|arg| arg == "profile=any"));
         // 拆规则时必须两条都删。
-        let reset = win::reset_firewall("EverGreen LAN");
+        let reset = win::reset_firewall("C:\\Apps\\a.exe", "EverGreen LAN");
         assert_eq!(reset.len(), 2);
+    }
+
+    #[test]
+    fn macos_firewall_allows_the_binary() {
+        let commands = mac::add_firewall("/Applications/A.app/Contents/MacOS/a", "EverGreen LAN");
+        assert_eq!(commands.len(), 2);
+        assert!(commands[0].iter().any(|arg| arg == "--add"));
+        assert!(commands[1].iter().any(|arg| arg == "--unblockapp"));
+        assert!(commands[0].contains(&"/Applications/A.app/Contents/MacOS/a".to_string()));
     }
 
     #[test]

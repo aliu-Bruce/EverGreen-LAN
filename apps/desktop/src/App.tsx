@@ -574,14 +574,10 @@ function Home({
 
         {status && !status.admin && (
           <p className="note" style={{ marginTop: 16 }}>
-            {status.platform === "macos"
-              ? "创建房间需要 root 权限，请在终端用 sudo 启动本程序。"
-              : "创建房间需要管理员权限，"}
-            {status.platform !== "macos" && (
-              <button className="btn text" onClick={onElevate}>
-                {status.platform === "linux" ? "提权重启 →" : "以管理员身份重启 →"}
-              </button>
-            )}
+            创建房间需要管理员权限，
+            <button className="btn text" onClick={onElevate}>
+              {status.platform === "linux" ? "提权重启 →" : "以管理员身份重启 →"}
+            </button>
           </p>
         )}
       </div>
