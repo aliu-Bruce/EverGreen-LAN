@@ -1530,7 +1530,7 @@ export default function App() {
           fingerprint: "A1B2C3",
           hosting: true,
           virtualIp: "10.66.0.1",
-          candidates: ["192.168.31.69:49851", "115.171.254.194:55964"],
+          candidates: ["192.168.1.23:49851", "114.514.191.981:55964"],
           reachable: true,
           firewallOk: true,
           peers: [

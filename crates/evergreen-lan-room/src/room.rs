@@ -1132,7 +1132,7 @@ mod candidate_tests {
 
     #[test]
     fn public_and_private_addresses_are_usable() {
-        assert!(usable_v4("192.168.31.69".parse().unwrap()));
+        assert!(usable_v4("192.168.1.23".parse().unwrap()));
         assert!(usable_v4("10.1.2.3".parse().unwrap()));
         assert!(usable_v4("172.20.1.1".parse().unwrap()));
         assert!(usable_v4("203.0.113.7".parse().unwrap()));
