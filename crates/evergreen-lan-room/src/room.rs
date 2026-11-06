@@ -24,6 +24,13 @@ use crate::device::DeviceChannels;
 const PING_INTERVAL: Duration = Duration::from_secs(10);
 /// peer 超过该时长未发出任何消息即视为离线。
 const PEER_TIMEOUT: Duration = Duration::from_secs(45);
+
+/// 完成握手但还没发 Hello 的连接能存活多久。
+///
+/// 访客每次点「加入」都会新建 socket，失败后旧连接会以不同源端口留在主机表里。
+/// 之前它们要等满 45 秒才消失，界面看起来像「一大堆用户」。握手阶段没有实际
+/// 流量，给 8 秒足够完成 Hello，超时就清掉。
+const HALF_OPEN_TIMEOUT: Duration = Duration::from_secs(8);
 /// 虚拟网络的前缀长度。
 const VIRTUAL_PREFIX: u8 = 16;
 
@@ -850,13 +857,21 @@ impl Hub {
         let addrs: Vec<SocketAddr> = self.peers_by_addr.keys().copied().collect();
 
         for addr in addrs {
-            let idle = self
-                .peers_by_addr
-                .get(&addr)
-                .map(|peer| now.duration_since(peer.session.last_recv_at))
-                .unwrap_or_default();
+            let (idle, half_open) = match self.peers_by_addr.get(&addr) {
+                Some(peer) => (
+                    now.duration_since(peer.session.last_recv_at),
+                    peer.ip.is_none(),
+                ),
+                None => (Duration::ZERO, false),
+            };
 
-            if idle > PEER_TIMEOUT {
+            let limit = if half_open {
+                HALF_OPEN_TIMEOUT
+            } else {
+                PEER_TIMEOUT
+            };
+
+            if idle > limit {
                 tracing::info!(%addr, ?idle, "对端超时");
                 self.remove_peer(addr);
                 continue;
