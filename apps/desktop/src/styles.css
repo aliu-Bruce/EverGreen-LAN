@@ -1586,3 +1586,15 @@ code,
 .btn.sponsor .arrow {
   color: #ffffff;
 }
+
+/* -------------------------------------------------------------- 粘贴按钮 */
+
+.go {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.go .paste {
+  white-space: nowrap;
+}

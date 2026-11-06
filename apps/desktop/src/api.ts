@@ -65,6 +65,7 @@ export const api = {
   openLogFolder: () => call<void>("open_log_folder"),
   openUrl: (url: string) => call<void>("open_url", { url }),
   copyText: (text: string) => call<void>("copy_text", { text }),
+  pasteText: () => call<string>("paste_text"),
   parseTheme: (raw: string, fileName?: string) =>
     call<CustomTheme>("parse_theme_json", { raw, fileName: fileName ?? null }),
 };

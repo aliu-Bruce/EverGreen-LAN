@@ -336,53 +336,158 @@ fn wintun_present() -> bool {
 
 /// 把文本写入系统剪贴板。
 ///
-/// 不走 WebView 的 `navigator.clipboard`：WKWebView 不把它视作安全上下文，
-/// 在 macOS 上会直接抛错，表现为「点了复制没反应」。
+/// 不提权时 WebView 的 clipboard API 通常可用，提权后会被系统拦掉；
+/// 因此这里走系统工具，并在 macOS 上准备了两条通道。
 #[tauri::command]
 pub fn copy_text(text: String) -> Result<(), String> {
     #[cfg(windows)]
-    let candidates: &[(&str, &[&str])] = &[("clip", &[])];
+    {
+        pipe_to("clip", &[], &text)
+    }
 
     #[cfg(target_os = "macos")]
-    let candidates: &[(&str, &[&str])] = &[("pbcopy", &[])];
+    {
+        // pbcopy 在多数情况下可用；提权后若失效，退回 AppleScript，
+        // 后者总是作用于当前登录用户的剪贴板。
+        if pipe_to("pbcopy", &[], &text).is_ok() {
+            return Ok(());
+        }
+        let script = format!("set the clipboard to {}", applescript_string(&text));
+        let output = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .output()
+            .map_err(|err| format!("无法写入剪贴板：{err}"))?;
+        return if output.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        };
+    }
 
     #[cfg(target_os = "linux")]
-    let candidates: &[(&str, &[&str])] =
-        &[("wl-copy", &[]), ("xclip", &["-selection", "clipboard"])];
-
-    let mut last_error = String::from("找不到可用的剪贴板工具");
-
-    for (program, args) in candidates {
-        let spawned = std::process::Command::new(program)
-            .args(*args)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-
-        let mut child = match spawned {
-            Ok(child) => child,
-            Err(err) => {
-                last_error = format!("无法启动 {program}：{err}");
-                continue;
+    {
+        for (program, args) in [
+            ("wl-copy", vec![]),
+            ("xclip", vec!["-selection", "clipboard"]),
+        ] {
+            if pipe_to(program, &args, &text).is_ok() {
+                return Ok(());
             }
-        };
+        }
+        return Err("找不到可用的剪贴板工具（wl-copy 或 xclip）".to_string());
+    }
+}
 
-        let written = match child.stdin.take() {
-            Some(mut stdin) => {
-                use std::io::Write;
-                stdin.write_all(text.as_bytes()).and_then(|_| stdin.flush())
-            }
-            None => Err(std::io::Error::other("无法写入剪贴板进程")),
-        };
+/// 把文本通过子进程的 stdin 写入系统剪贴板。
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+fn pipe_to(program: &str, args: &[&str], text: &str) -> Result<(), String> {
+    use std::io::Write;
 
-        match written.and_then(|_| child.wait().map(|_| ())) {
-            Ok(()) => return Ok(()),
-            Err(err) => last_error = format!("{program} 写入失败：{err}"),
+    let mut child = std::process::Command::new(program)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|err| format!("无法启动 {program}：{err}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(text.as_bytes())
+            .map_err(|err| format!("写入 {program} 失败：{err}"))?;
+    }
+
+    child
+        .wait()
+        .map_err(|err| format!("{program} 执行失败：{err}"))?;
+    Ok(())
+}
+
+/// 把任意文本转成 AppleScript 字符串字面量。
+#[cfg(target_os = "macos")]
+fn applescript_string(text: &str) -> String {
+    let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
+}
+
+/// 读取系统剪贴板文本。
+///
+/// 提权运行时 WebView2 的剪贴板 API 会被 UIPI 拦掉，粘贴键因此失效。
+/// 这里直接调用系统自带的工具，绕开 WebView 的权限限制。
+#[tauri::command]
+pub fn paste_text() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        // PowerShell 的 Get-Clipboard 在所有受支持的 Windows 上都可用。
+        let output = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Get-Clipboard -Raw",
+            ])
+            .output()
+            .map_err(|err| format!("无法读取剪贴板：{err}"))?;
+        if !output.status.success() {
+            return Err("剪贴板为空或无法读取".to_string());
+        }
+        let text = String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string();
+        if text.is_empty() {
+            Err("剪贴板为空".to_string())
+        } else {
+            Ok(text)
         }
     }
 
-    Err(last_error)
+    #[cfg(target_os = "macos")]
+    {
+        let read = std::process::Command::new("pbpaste").output();
+        if let Ok(output) = read {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout)
+                    .trim_end()
+                    .to_string();
+                if !text.is_empty() {
+                    return Ok(text);
+                }
+            }
+        }
+
+        // 提权后 pbpaste 可能读到空内容，改用 AppleScript 再试一次。
+        let output = std::process::Command::new("osascript")
+            .args(["-e", "the clipboard as text"])
+            .output()
+            .map_err(|err| format!("无法读取剪贴板：{err}"))?;
+        if !output.status.success() {
+            return Err("剪贴板为空".to_string());
+        }
+        let text = String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string();
+        if text.is_empty() {
+            Err("剪贴板为空".to_string())
+        } else {
+            Ok(text)
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        for (program, args) in [
+            ("wl-paste", vec!["--no-newline"]),
+            ("xclip", vec!["-selection", "clipboard", "-o"]),
+        ] {
+            let Ok(output) = std::process::Command::new(program).args(&args).output() else {
+                continue;
+            };
+            if output.status.success() && !output.stdout.is_empty() {
+                return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+            }
+        }
+        Err("剪贴板为空或缺少 wl-paste / xclip".to_string())
+    }
 }
 
 /* ------------------------------------------------------------ 外部链接 */

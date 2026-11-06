@@ -554,6 +554,19 @@ function Home({
             </div>
             <div className="go">
               <button
+                className="btn text paste"
+                disabled={busy}
+                title="从系统剪贴板读取邀请码"
+                onClick={() =>
+                  void api
+                    .pasteText()
+                    .then((text) => setCode(text.trim()))
+                    .catch(() => undefined)
+                }
+              >
+                粘贴
+              </button>
+              <button
                 className="btn"
                 disabled={busy || !code.trim()}
                 onClick={() => onJoin(code.trim())}
