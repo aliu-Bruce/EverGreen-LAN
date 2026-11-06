@@ -77,6 +77,7 @@ fn platform_log_dir() -> PathBuf {
 }
 
 /// 当前用户的主目录；取不到时退回临时目录，保证仍可写。
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn home_dir() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
