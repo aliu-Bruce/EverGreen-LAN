@@ -814,13 +814,21 @@ impl Hub {
     async fn route_outgoing(&mut self, packet: Vec<u8>) {
         match route_outgoing(&packet, &VIRTUAL_SUBNET, self.own_ip) {
             Routing::ToPeer(ip) => {
+                tracing::debug!(
+                    dst = %std::net::Ipv4Addr::from(ip),
+                    len = packet.len(),
+                    "转发本机发出的单播"
+                );
                 if let Some(addr) = self.peers_by_ip.get(&ip).copied() {
                     self.send_frame(addr, &Frame::Ip(packet)).await;
                 } else if let Some(gateway) = self.gateway() {
                     // 访客只与主机保持会话。子网内其他任何目标都交给
                     // 主机，由主机中继——就像交换机本会直接
                     // 送达那样。
+                    tracing::debug!(dst = %std::net::Ipv4Addr::from(ip), "经网关转发");
                     self.send_frame(gateway, &Frame::Ip(packet)).await;
+                } else {
+                    tracing::debug!(dst = %std::net::Ipv4Addr::from(ip), "没有可用对端，丢弃");
                 }
             }
             Routing::Broadcast => {
@@ -832,10 +840,11 @@ impl Hub {
                 }
             }
             Routing::Drop(reason) => {
-                tracing::trace!(
+                tracing::debug!(
                     reason = reason.as_str(),
                     len = packet.len(),
-                    "dropped outgoing packet"
+                    dst = packet.get(16..20).map(|bytes| bytes.to_vec()),
+                    "本机发出的包被丢弃"
                 );
             }
         }
