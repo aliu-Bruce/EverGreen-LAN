@@ -279,9 +279,15 @@ pub mod spec {
             ])]
         }
 
+        /// netsh 会把 `name=` 后面的值按空格切开；规则名含空格时必须加引号，
+        /// 否则 `name=EverGreen LAN` 里的 `LAN` 会被当成下一个参数而整条命令失败。
+        fn quote_name(rule_name: &str) -> String {
+            format!("name=\"{rule_name}\"")
+        }
+
         pub fn reset_firewall(_executable: &str, rule_name: &str) -> Vec<Vec<String>> {
-            let name = format!("name={rule_name}");
-            let subnet = format!("name={rule_name}（虚拟网段）");
+            let name = quote_name(rule_name);
+            let subnet = quote_name(&format!("{rule_name}（虚拟网段）"));
             vec![
                 netsh(&["advfirewall", "firewall", "delete", "rule", &name]),
                 netsh(&["advfirewall", "firewall", "delete", "rule", &subnet]),
@@ -296,8 +302,8 @@ pub mod spec {
             //    （Minecraft 的 javaw、Terraria 等）能被连上。只放行本程序时，
             //    注入到系统栈的包仍会因为目标进程未授权而被防火墙丢弃。
             let program = format!("program=\"{executable}\"");
-            let name = format!("name={rule_name}");
-            let subnet_name = format!("name={rule_name}（虚拟网段）");
+            let name = quote_name(rule_name);
+            let subnet_name = quote_name(&format!("{rule_name}（虚拟网段）"));
             let subnet = netsh(&[
                 "advfirewall",
                 "firewall",
@@ -532,6 +538,13 @@ mod tests {
         assert_eq!(commands.len(), 2, "程序规则与网段规则都要有");
         let subnet = &commands[1];
         assert!(subnet.iter().any(|arg| arg == "remoteip=10.66.0.0/16"));
+        // 规则名必须带引号，否则 netsh 会把它拆成多个参数。
+        assert!(commands[0]
+            .iter()
+            .any(|arg| arg == "name=\"EverGreen LAN\""));
+        assert!(subnet
+            .iter()
+            .any(|arg| arg == "name=\"EverGreen LAN（虚拟网段）\""));
         assert!(subnet.iter().any(|arg| arg == "profile=any"));
         // 拆规则时必须两条都删。
         let reset = win::reset_firewall("C:\\Apps\\a.exe", "EverGreen LAN");
