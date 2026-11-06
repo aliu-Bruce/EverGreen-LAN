@@ -843,7 +843,7 @@ impl Hub {
                 tracing::debug!(
                     reason = reason.as_str(),
                     len = packet.len(),
-                    dst = packet.get(16..20).map(|bytes| bytes.to_vec()),
+                    dst = ?packet.get(16..20),
                     "本机发出的包被丢弃"
                 );
             }
