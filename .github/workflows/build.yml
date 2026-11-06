@@ -24,22 +24,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ---------------- Windows（NSIS 安装包，附带对应架构的 wintun.dll）
+          # ---------------- Windows
+          # 每个架构各出一个 NSIS 安装包 + 一个免安装的便携包。
           - name: windows-x86
             os: windows-latest
             target: i686-pc-windows-msvc
             wintun: x86
+            windows: true
           - name: windows-x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
             wintun: amd64
+            windows: true
           - name: windows-arm64
             os: windows-latest
             target: aarch64-pc-windows-msvc
             wintun: arm64
+            windows: true
 
-          # ---------------- macOS（.app + .dmg）
-          # 只出一个通用包：同时包含 arm64 与 x86_64，用户不会装错架构。
+          # ---------------- macOS
+          # 单独架构各出一个 dmg，另外出一个同时包含两者的通用包。
+          - name: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - name: macos-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
           - name: macos-universal
             os: macos-latest
             target: universal-apple-darwin
@@ -99,7 +109,6 @@ jobs:
             patchelf \
             rpm
 
-
       # Wintun 是第三方驱动，不随仓库分发；按目标架构取对应 DLL。
       - name: 准备 wintun.dll
         if: runner.os == 'Windows'
@@ -114,10 +123,29 @@ jobs:
         timeout-minutes: 25
         run: npx tauri build --target ${{ matrix.target }}
 
+      # 免安装版本：主程序 + 驱动 + 许可文件，解压即用。
+      - name: 打包便携版
+        if: matrix.windows
+        shell: pwsh
+        run: |
+          $stage = "portable/evergreen-lan"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/evergreen-lan.exe" $stage
+          Copy-Item "apps/desktop/src-tauri/resources/wintun.dll" $stage
+          Copy-Item "LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.md" $stage
+          Compress-Archive -Path $stage -DestinationPath "portable/evergreen-lan-${{ matrix.name }}-portable.zip" -Force
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: evergreen-lan-${{ matrix.name }}
           path: |
             target/${{ matrix.target }}/release/bundle/**
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.windows
+        with:
+          name: evergreen-lan-${{ matrix.name }}-portable
+          path: portable/*.zip
           if-no-files-found: warn
