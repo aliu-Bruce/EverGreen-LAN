@@ -47,11 +47,40 @@ pub fn run() {
 ///
 /// 与身份文件放在同一父目录下，便于用户一次性找到全部本地状态。
 pub fn log_directory() -> PathBuf {
+    platform_log_dir().join("logs")
+}
+
+/// 各平台的日志根目录。
+///
+/// Windows 用 `%LOCALAPPDATA%`，macOS 用 `~/Library/Logs`，Linux 用 XDG 状态目录。
+/// 早期实现只认 Windows 的环境变量，导致 macOS 上退回当前目录——从 Finder 启动时
+/// 那是 `/`，日志会全部丢失。
+#[cfg(windows)]
+fn platform_log_dir() -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("EverGreenLAN")
-        .join("logs")
+}
+
+#[cfg(target_os = "macos")]
+fn platform_log_dir() -> PathBuf {
+    home_dir().join("Library").join("Logs").join("EverGreenLAN")
+}
+
+#[cfg(target_os = "linux")]
+fn platform_log_dir() -> PathBuf {
+    std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".local").join("state"))
+        .join("EverGreenLAN")
+}
+
+/// 当前用户的主目录；取不到时退回临时目录，保证仍可写。
+fn home_dir() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
 }
 
 /// 日志文件路径。

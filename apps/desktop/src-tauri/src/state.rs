@@ -45,10 +45,39 @@ impl AppState {
 }
 
 fn config_dir() -> PathBuf {
+    platform_config_root().join("EverGreenLAN")
+}
+
+/// 各平台的配置根目录。
+///
+/// 早期实现只认 Windows 的 `APPDATA`，macOS/Linux 上会退回到启动目录，
+/// 身份文件因此写不进去——每次启动都会生成新的静态密钥，邀请码随之变化。
+#[cfg(windows)]
+fn platform_config_root() -> PathBuf {
     std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("EverGreenLAN")
+}
+
+#[cfg(target_os = "macos")]
+fn platform_config_root() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("Library")
+        .join("Application Support")
+}
+
+#[cfg(target_os = "linux")]
+fn platform_config_root() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir)
+                .join(".config")
+        })
 }
 
 fn identity_path() -> PathBuf {
