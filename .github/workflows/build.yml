@@ -71,13 +71,27 @@ jobs:
           key: ${{ matrix.target }}
 
       # Linux 需要 WebKitGTK 与打包工具。
+      #
+      # runner 的 apt 偶发卡死：镜像开机时会跑 unattended-upgrades 抢占 dpkg 锁，
+      # 且个别镜像源会长时间无响应。这里先停掉自动升级，再给 apt 加上超时与重试，
+      # 避免整条流水线被一个下载拖到 20 分钟超时。
       - name: Linux 依赖
         if: runner.os == 'Linux'
-        timeout-minutes: 20
+        timeout-minutes: 15
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -o APT::Get::Assume-Yes=true --no-install-recommends \
+          sudo systemctl stop unattended-upgrades 2>/dev/null || true
+          sudo systemctl disable unattended-upgrades 2>/dev/null || true
+
+          APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Get::Assume-Yes=true -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
+
+          for attempt in 1 2 3; do
+            echo "apt-get update（第 $attempt 次）"
+            if sudo apt-get update $APT_OPTS; then break; fi
+            sleep 5
+          done
+
+          sudo apt-get install -y $APT_OPTS --no-install-recommends \
             libwebkit2gtk-4.1-dev \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
