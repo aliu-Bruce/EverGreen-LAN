@@ -1,0 +1,8 @@
+# 构建产物与本地临时文件不入库
+*.exe
+*.exe~
+*.test
+*.out
+/dist/
+Thumbs.db
+desktop.ini
