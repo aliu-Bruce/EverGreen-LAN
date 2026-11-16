@@ -97,3 +97,17 @@ ping 10.66.7.2        # 打到另一成员,经主机转发
 - 重连按公钥认出,隧道地址保留;地址池满时新成员拿不到地址,自行退避。
 - 无遥测、无外联;除同房成员外不产生任何网络流量。
 - 长期身份绑定与公网部署的防滥用仍在 P2 清单内。
+
+## 7. 界面通道(-ipc,给界面开发者)
+
+界面程序以子进程拉起 `egland -ipc`,经 stdin/stdout 一行一个 JSON(UTF-8)通信:
+
+| 请求 | 应答 |
+|---|---|
+| `{"op":"start-host"}`(可选 `code`/`name`/`listen`/`adapter`/`mtu`/`cidr`) | `ok` + `state:"hosting"` + `code`(展示形 XXXX XXXX)+ `self` |
+| `{"op":"join","code":"…","peer":"host:port"}` | 先 `ok state:"joining"`,完成后发事件 `room-up` |
+| `{"op":"stop"}` | `ok state:"idle"`;幂等 |
+| `{"op":"status"}` / `{"op":"members"}` | `status`(state/code/self)/ `members`(list) |
+
+失败一律 `{"type":"err","message":"…"}`;房间因网络错误终止时发 `room-down` 事件。
+界面关闭管道即退出,核心自动清理网卡与监听。

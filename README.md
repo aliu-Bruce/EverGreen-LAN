@@ -14,7 +14,8 @@ EGLAN 在两台机器之间架起一条**端到端加密的虚拟局域网**:建
 - **加密**:X25519 握手 → HKDF-SHA256(房间码为盐)→ AES-GCM;计数器 nonce,接收序号只增不减抗重放
 - **虚拟网卡**:Windows(wintun.dll)/ Linux(/dev/net/tun)已接;macOS(utun)待真机接入
 - **自检**:`-test-echo` 进程内完成三人房间网全链路(分配、单播、广播、错码拒绝、防重放),不需要管理员
-- 占位骨架:`internal/disc`(发现)、`internal/ipc`(界面通道)、`internal/plugin`(插件)
+- **界面通道**:`-ipc` 以 stdin/stdout JSON 行协议驱动核心(start-host / join / stop / status / members),Flutter 界面即插即用
+- 占位骨架:`internal/disc`(发现)、`internal/plugin`(插件)
 
 运行与多机联机实测见 **[docs/run-p1.md](docs/run-p1.md)**。
 
@@ -43,7 +44,9 @@ core/            Go 核心
     crypto/      密钥交换与会话加密
     tun/         虚拟网卡平台抽象
     room/        房间码生成、归一与展示
-    disc/ ipc/ plugin/   阶段骨架
+    ipc/         界面通道:stdin/stdout JSON 行协议
+    firewall/    主机端口放行自持(平台分文件)
+    disc/ plugin/   阶段骨架
 assets/langs/    界面语言包(简/繁/英/日/韩/俄/西)
 docs/            设计文档与运行手册
   ui/            界面原型(温室设计语言)

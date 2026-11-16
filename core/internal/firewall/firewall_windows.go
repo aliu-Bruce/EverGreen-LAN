@@ -1,6 +1,7 @@
 //go:build windows
 
-package main
+// Package firewall 自持主机所需的系统放行规则,不依赖任何脚本。
+package firewall
 
 import (
 	"fmt"
@@ -8,10 +9,10 @@ import (
 	"strconv"
 )
 
-// openFirewall 放行主机的监听端口,局域网对端才能连入。
+// Open 放行主机的监听端口,局域网对端才能连入。
 // 规则名固定且先删后加,重复执行结果幂等;
 // 失败只提示不阻断:防火墙可能已被手工放行,或由用户自行处理。
-func openFirewall(port int) {
+func Open(port int) {
 	rule := fmt.Sprintf("EverGreen LAN UDP %d", port)
 	_, _ = exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name="+rule).CombinedOutput()
 	out, err := exec.Command("netsh", "advfirewall", "firewall", "add", "rule",

@@ -29,11 +29,11 @@ const (
 	pendingCap = 8
 )
 
-// MemberInfo 是在房成员的对外快照,供界面与日志展示。
+// MemberInfo 是在房成员的对外快照,供界面与日志展示;JSON 名即为协议字段。
 type MemberInfo struct {
-	Name string
-	IP   string
-	Pub  string
+	Name string `json:"name"`
+	IP   string `json:"ip"`
+	Pub  string `json:"pub"`
 }
 
 // clipName 截断超长名字并保持 UTF-8 完整。

@@ -18,12 +18,12 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"os/user"
 	"runtime"
-	"strings"
 	"time"
 
 	"eglan/internal/crypto"
+	"eglan/internal/firewall"
+	"eglan/internal/ipc"
 	"eglan/internal/mesh"
 	"eglan/internal/room"
 	"eglan/internal/tun"
@@ -33,13 +33,14 @@ func main() {
 	var (
 		role    = flag.String("role", "host", "角色:host(开房间)/ client(加入)")
 		code    = flag.String("code", "", "房间码;host 留空则自动生成")
-		name    = flag.String("name", defaultName(), "房间内显示名")
+		name    = flag.String("name", ipc.DefaultName(), "房间内显示名")
 		ip      = flag.String("ip", "", "host 的隧道地址段,如 10.66.7.1/24;默认 10.66.7.1/24")
 		listen  = flag.Int("listen", 47777, "host 监听的 UDP 端口")
 		peer    = flag.String("peer", "", "client 要连接的主机地址 host:port")
 		adapter = flag.String("adapter", "EGLAN", "虚拟网卡名称")
 		mtu     = flag.Int("mtu", 1400, "虚拟网卡 MTU")
 		echo    = flag.Bool("test-echo", false, "进程内自检,不需要管理员")
+		ipcMode = flag.Bool("ipc", false, "界面通道:stdin/stdout 行协议,由界面程序调用")
 	)
 	flag.Parse()
 
@@ -50,9 +51,12 @@ func main() {
 	}
 
 	var err error
-	if *echo {
+	switch {
+	case *echo:
 		err = testEcho()
-	} else {
+	case *ipcMode:
+		err = ipc.Run(os.Stdin, os.Stdout)
+	default:
 		err = relay(*role, *code, *name, *ip, *peer, *listen, *adapter, *mtu)
 	}
 	if err != nil {
@@ -71,6 +75,7 @@ func banner() {
   egland -role host                    开房间:自动生成房间码,以管理员运行
   egland -role client -code 房间码 -peer 主机IP:47777
                                        加入房间:以管理员运行
+  egland -ipc                          界面通道(由界面程序调用,不手动使用)
 
 按回车键退出...`)
 	bufio.NewReader(os.Stdin).ReadString('\n')
@@ -84,27 +89,6 @@ func waitIfConsole() {
 		fmt.Println("按回车键退出...")
 		bufio.NewReader(os.Stdin).ReadString('\n')
 	}
-}
-
-// defaultName 给未指定名字的成员起默认名:Player-系统用户名。
-func defaultName() string {
-	base := "anon"
-	if u, err := user.Current(); err == nil && u.Username != "" {
-		base = u.Username
-	}
-	var b strings.Builder
-	// 只保留安全字符:名字只进房间名册,不当任何控制面输入
-	for _, r := range base {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' ||
-			r == '_' || r == '.' || r == '-' {
-			b.WriteRune(r)
-		}
-	}
-	clean := b.String()
-	if len(clean) > 17 { // 总长上限 24:Player- 前缀 + 17 字符
-		clean = clean[:17]
-	}
-	return "Player-" + clean
 }
 
 // relay 真实模式:建网卡、入房间,双泵转发直至出错或收到中断。
@@ -155,7 +139,7 @@ func relay(role, code, name, ip, peer string, listen int, adapter string, mtu in
 			return err
 		}
 		defer dev.Close()
-		openFirewall(listen)
+		firewall.Open(listen)
 		pc, err := mesh.Bind(listen)
 		if err != nil {
 			return fmt.Errorf("监听 UDP 端口 %d 失败: %w", listen, err)
