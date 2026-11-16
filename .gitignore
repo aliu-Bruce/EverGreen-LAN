@@ -4,5 +4,6 @@
 *.test
 *.out
 /dist/
+*.zip
 Thumbs.db
 desktop.ini

@@ -9,6 +9,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"net"
@@ -34,6 +35,12 @@ func main() {
 	)
 	flag.Parse()
 
+	// 裸启动(如双击)不开任何模式,只给说明窗口并等回车,绝不闪退
+	if len(os.Args) == 1 {
+		banner()
+		return
+	}
+
 	var err error
 	if *echo {
 		err = testEcho()
@@ -42,7 +49,32 @@ func main() {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "eglan:", err)
+		waitIfConsole()
 		os.Exit(1)
+	}
+}
+
+// banner 是无参数启动时的说明窗口:P0 阶段是命令行核心,图形界面随 P1 接入。
+func banner() {
+	fmt.Print(`EverGreen LAN 核心 · P0(命令行阶段,图形界面在 P1 随界面客户端接入)
+把本机变成虚拟局域网的一端;创建虚拟网卡需要管理员权限。
+
+  egland -test-echo                          免管理员自检:握手+加密回声+防重放
+  egland -role host                          建房间:以管理员运行,等待对端加入
+  egland -role client -peer 对端IP:47777      加入:以管理员运行
+  egland -role host -ip 10.66.7.1/24         指定本端隧道地址(其余参数见 docs/run-p0.md)
+
+按回车键退出...`)
+	bufio.NewReader(os.Stdin).ReadString('\n')
+}
+
+// waitIfConsole 在交互式控制台下等一次回车再退出,窗口不闪退;
+// 输出被重定向(脚本调用)时不等待。
+func waitIfConsole() {
+	if fi, err := os.Stdout.Stat(); err == nil && (fi.Mode()&os.ModeCharDevice) != 0 {
+		fmt.Println()
+		fmt.Println("按回车键退出...")
+		bufio.NewReader(os.Stdin).ReadString('\n')
 	}
 }
 
@@ -78,6 +110,7 @@ func relay(role, ip, peer string, listen int, adapter string, mtu int) error {
 		}
 		defer dev.Close()
 		fmt.Printf("虚拟网卡 %s(%s)就绪\n", dev.Name(), cidr)
+		openFirewall(listen)
 		fmt.Printf("等待对端加入,监听 UDP :%d ...\n", listen)
 	} else {
 		fmt.Printf("连接对端 %s ...\n", peer)
