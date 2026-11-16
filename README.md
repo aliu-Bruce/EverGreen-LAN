@@ -6,22 +6,24 @@ Minecraft 等游戏的 LAN 联机受广播域限制——不同子网、不同�
 EGLAN 在两台机器之间架起一条**端到端加密的虚拟局域网**:建房间、给码、加入,
 局域网里该看见的,穿过几层路由也能看见。
 
-## 当前状态:P0 · 核心骨架
+## 当前状态:P1 · 多成员房间网
 
+- **房间网**:主机-成员星型拓扑;房间码作预共享密钥混入密钥派生,持码者才能入房
+- **地址与转发**:主机分配隧道地址(10.66.7.2 起),按目的地址转发单播;广播与组播向全房间洪水(游戏 LAN 发现依赖)
 - **隧道**:UDP 数据报直传 IP 包,一个包一帧,无分片无粘包
-- **加密**:X25519 握手 → 双方向密钥派生(HKDF-SHA256)→ AES-GCM;计数器 nonce,接收序号只增不减抗重放
+- **加密**:X25519 握手 → HKDF-SHA256(房间码为盐)→ AES-GCM;计数器 nonce,接收序号只增不减抗重放
 - **虚拟网卡**:Windows(wintun.dll)/ Linux(/dev/net/tun)已接;macOS(utun)待真机接入
-- **自检**:`-test-echo` 进程内完成握手、双向加密回声与防重放校验,不需要管理员
-- 占位骨架:`internal/room`(房间)、`internal/disc`(发现)、`internal/ipc`(界面通道)、`internal/plugin`(插件)
+- **自检**:`-test-echo` 进程内完成三人房间网全链路(分配、单播、广播、错码拒绝、防重放),不需要管理员
+- 占位骨架:`internal/disc`(发现)、`internal/ipc`(界面通道)、`internal/plugin`(插件)
 
-运行与两机 ping 实测见 **[docs/run-p0.md](docs/run-p0.md)**。
+运行与多机联机实测见 **[docs/run-p1.md](docs/run-p1.md)**。
 
 ## 路线
 
 | 阶段 | 内容 |
 |---|---|
-| P0(当前) | 核心隧道 + 双机 ping 跑通 |
-| P1 | 房间码与成员管理、多对端转发、Flutter 界面(JSON IPC 桥) |
+| P0(已完成) | 核心隧道 + 双机 ping 跑通 |
+| P1(当前) | 房间码与成员管理、多成员转发(进行中)→ Flutter 界面(JSON IPC 桥) |
 | P2 | 插件系统、macOS/Android、发现协议完善 |
 
 ## 原则
@@ -37,10 +39,11 @@ EGLAN 在两台机器之间架起一条**端到端加密的虚拟局域网**:建
 core/            Go 核心
   cmd/egland/    命令行入口
   internal/
-    tunnel/      加密 UDP 通道与握手
+    mesh/        多成员房间网:握手、地址分配、星型转发与广播洪水
     crypto/      密钥交换与会话加密
     tun/         虚拟网卡平台抽象
-    room/ disc/ ipc/ plugin/   阶段骨架
+    room/        房间码生成、归一与展示
+    disc/ ipc/ plugin/   阶段骨架
 assets/langs/    界面语言包(简/繁/英/日/韩/俄/西)
 docs/            设计文档与运行手册
   ui/            界面原型(温室设计语言)

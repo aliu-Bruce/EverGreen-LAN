@@ -46,9 +46,11 @@ type Session struct {
 	rxN  uint64 // 已接收的最大序号 + 1,只增不减
 }
 
-// Exchange 完成一次密钥交换。isInitiator 标记本端是否发起方。
-// 双方各持己方私钥与对方公钥,即可推出同一对方向密钥。
-func Exchange(self *Identity, peerPub []byte, isInitiator bool) (*Session, error) {
+// Exchange 完成一次密钥交换。isInitiator 标记本端是否发起方,
+// psk 是房间码归一后的预共享密钥,可为空(仅测试)。
+// 双方各持己方私钥与对方公钥,即可推出同一对方向密钥;
+// 房间码混入派生:不持码者推不出任何一方的钥匙,入房资格由此证明。
+func Exchange(self *Identity, peerPub []byte, isInitiator bool, psk []byte) (*Session, error) {
 	pub, err := ecdh.X25519().NewPublicKey(peerPub)
 	if err != nil {
 		return nil, fmt.Errorf("crypto: 对端公钥无效: %w", err)
@@ -57,11 +59,11 @@ func Exchange(self *Identity, peerPub []byte, isInitiator bool) (*Session, error
 	if err != nil {
 		return nil, fmt.Errorf("crypto: ECDH 失败: %w", err)
 	}
-	lowKey, err := hkdfKey(secret, "eglan/v1 dir=low")
+	lowKey, err := hkdfKey(secret, psk, "eglan/v1 dir=low")
 	if err != nil {
 		return nil, err
 	}
-	highKey, err := hkdfKey(secret, "eglan/v1 dir=high")
+	highKey, err := hkdfKey(secret, psk, "eglan/v1 dir=high")
 	if err != nil {
 		return nil, err
 	}
@@ -125,9 +127,12 @@ func aead(key []byte) (cipher.AEAD, error) {
 }
 
 // hkdfKey 按标准 HKDF-SHA256 从共享秘密派生 32 字节密钥。
-// Extract:盐为空时按规范以哈希长度个零字节起算;Expand:单块足够。
-func hkdfKey(secret []byte, info string) ([]byte, error) {
-	prk := hmac.New(sha256.New, make([]byte, sha256.Size))
+// Extract:盐取房间码,空盐按规范以哈希长度个零字节起算;Expand:单块足够。
+func hkdfKey(secret, salt []byte, info string) ([]byte, error) {
+	if len(salt) == 0 {
+		salt = make([]byte, sha256.Size)
+	}
+	prk := hmac.New(sha256.New, salt)
 	prk.Write(secret)
 	mac := hmac.New(sha256.New, prk.Sum(nil))
 	mac.Write([]byte(info))
