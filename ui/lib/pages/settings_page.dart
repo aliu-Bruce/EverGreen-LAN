@@ -94,7 +94,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               // 自定义主题:界面颜色全部来自主题令牌
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
                 child: Row(
                   children: [
                     Expanded(

@@ -226,16 +226,87 @@ class _PageSwitcher extends StatelessWidget {
 }
 
 // 侧栏:品牌、四个导航项、状态与身份;活动项以整栏唯一的滑动点表达。
-class Rail extends StatelessWidget {
+class Rail extends StatefulWidget {
   final ShellPage page;
   final ValueChanged<ShellPage> onGo;
   const Rail({super.key, required this.page, required this.onGo});
+
+  @override
+  State<Rail> createState() => _RailState();
+}
+
+class _RailState extends State<Rail> with SingleTickerProviderStateMixin {
+  // M3 emphasized 缓动,与 mockup 的 --ease-emph 一致。
+  static const Cubic _ease = Cubic(0.2, 0, 0, 1);
+
+  late final AnimationController _dotCtl =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
+  final GlobalKey _anchor = GlobalKey();
+  final Map<ShellPage, GlobalKey> _sqs = {
+    for (final p in const [ShellPage.home, ShellPage.room, ShellPage.transfer, ShellPage.settings])
+      p: GlobalKey(),
+  };
+  Offset _from = Offset.zero;
+  Offset _to = Offset.zero;
+  bool _shown = false;
+  ShellPage? _placedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _place());
+  }
+
+  @override
+  void didUpdateWidget(Rail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _place());
+  }
+
+  @override
+  void dispose() {
+    _dotCtl.dispose();
+    super.dispose();
+  }
+
+  // 逐项测量占位槽位置:切页时滑动,首次与内容变化时瞬时就位。
+  void _place() {
+    if (!mounted) return;
+    final anchorCtx = _anchor.currentContext;
+    final sqCtx = _sqs[widget.page]?.currentContext;
+    if (anchorCtx == null || sqCtx == null) {
+      if (_shown) setState(() => _shown = false);
+      return;
+    }
+    final anchor = anchorCtx.findRenderObject()! as RenderBox;
+    final sq = sqCtx.findRenderObject()! as RenderBox;
+    final p = sq.localToGlobal(Offset.zero, ancestor: anchor);
+    final pos = Offset(p.dx, p.dy + sq.size.height / 2 - 2.5);
+    final animate = _shown && _placedAt != widget.page && !MediaQuery.disableAnimationsOf(context);
+    setState(() {
+      if (animate) {
+        // 从当前显示位置出发滑向新位置。
+        final k = _ease.transform(_dotCtl.value);
+        _from = Offset.lerp(_from, _to, k)!;
+        _to = pos;
+        _dotCtl.forward(from: 0);
+      } else {
+        _from = pos;
+        _to = pos;
+        _dotCtl.value = 0;
+      }
+      _shown = true;
+      _placedAt = widget.page;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = AppState.of(context);
     final c = Eg.of(context).c;
     final t = (k) => app.langs.t(k);
+    final page = widget.page;
+    final onGo = widget.onGo;
 
     final items = <(ShellPage, IconData, String, String)>[
       (ShellPage.home, Icons.home_outlined, t('nav.home'), ''),
@@ -276,18 +347,52 @@ class Rail extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Stack(
+              key: _anchor,
               children: [
-                for (final (target, icon, label, cnt) in items)
-                  _NavItem(
-                    c: c,
-                    icon: icon,
-                    label: label,
-                    cnt: cnt,
-                    active: page == target,
-                    onTap: () => onGo(target),
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (target, icon, label, cnt) in items)
+                      _NavItem(
+                        c: c,
+                        icon: icon,
+                        label: label,
+                        cnt: cnt,
+                        sqKey: _sqs[target],
+                        active: page == target,
+                        onTap: () => onGo(target),
+                      ),
+                  ],
+                ),
+                // 滑点:整栏唯一的状态点,切页时自旧项滑向新项,途中拉伸后收拢。
+                AnimatedBuilder(
+                  animation: _dotCtl,
+                  builder: (context, _) {
+                    final raw = _dotCtl.value;
+                    final s = 4 * raw * (1 - raw); // 途中拉伸的抛物线,峰值 1
+                    final pos = Offset.lerp(_from, _to, _ease.transform(raw))!;
+                    return Positioned(
+                      left: pos.dx,
+                      top: pos.dy,
+                      child: IgnorePointer(
+                        child: AnimatedOpacity(
+                          opacity: _shown ? 1 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Transform(
+                            alignment: Alignment.center,
+                            transform: Matrix4.diagonal3Values(1 - 0.2 * s, 1 + 1.4 * s, 1),
+                            child: Container(
+                              width: 5,
+                              height: 5,
+                              decoration: BoxDecoration(color: c.acc, borderRadius: BorderRadius.circular(2)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -360,6 +465,7 @@ class Rail extends StatelessWidget {
 }
 
 // 侧栏导航项:悬停面板底色,活动项同样;图标在活动时染品牌绿。
+// 行首保留 5px 透明占位槽(.sq),滑点由侧栏统一测量并盖在其上。
 class _NavItem extends StatefulWidget {
   final EgColors c;
   final IconData icon;
@@ -367,7 +473,8 @@ class _NavItem extends StatefulWidget {
   final String cnt;
   final bool active;
   final VoidCallback onTap;
-  const _NavItem({required this.c, required this.icon, required this.label, required this.cnt, required this.active, required this.onTap});
+  final Key? sqKey;
+  const _NavItem({required this.c, required this.icon, required this.label, required this.cnt, required this.active, required this.onTap, this.sqKey});
 
   @override
   State<_NavItem> createState() => _NavItemState();
@@ -397,6 +504,7 @@ class _NavItemState extends State<_NavItem> {
             child: Row(
               children: [
                 Container(
+                  key: widget.sqKey,
                   width: 5,
                   height: 5,
                   margin: const EdgeInsets.only(right: 5),
@@ -428,16 +536,89 @@ class _NavItemState extends State<_NavItem> {
 }
 
 // 顶栏导航模式:品牌 + 页签(下滑线指示) + 连接状态。
-class TopBar extends StatelessWidget {
+class TopBar extends StatefulWidget {
   final ShellPage page;
   final ValueChanged<ShellPage> onGo;
   const TopBar({super.key, required this.page, required this.onGo});
+
+  @override
+  State<TopBar> createState() => _TopBarState();
+}
+
+class _TopBarState extends State<TopBar> with SingleTickerProviderStateMixin {
+  // M3 emphasized 缓动,与 mockup 的 --ease-emph 一致。
+  static const Cubic _ease = Cubic(0.2, 0, 0, 1);
+
+  late final AnimationController _indCtl =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
+  final GlobalKey _anchor = GlobalKey();
+  final Map<ShellPage, GlobalKey> _tabs = {
+    for (final p in const [ShellPage.home, ShellPage.room, ShellPage.transfer, ShellPage.settings])
+      p: GlobalKey(),
+  };
+  double _fromL = 0, _toL = 0, _fromW = 0, _toW = 0;
+  bool _shown = false;
+  ShellPage? _placedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _place());
+  }
+
+  @override
+  void didUpdateWidget(TopBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _place());
+  }
+
+  @override
+  void dispose() {
+    _indCtl.dispose();
+    super.dispose();
+  }
+
+  // 测激活页签的位置:切页时滑线移动,首次与内容变化时瞬时就位。
+  void _place() {
+    if (!mounted) return;
+    final anchorCtx = _anchor.currentContext;
+    final tabCtx = _tabs[widget.page]?.currentContext;
+    if (anchorCtx == null || tabCtx == null) {
+      if (_shown) setState(() => _shown = false);
+      return;
+    }
+    final anchor = anchorCtx.findRenderObject()! as RenderBox;
+    final tab = tabCtx.findRenderObject()! as RenderBox;
+    final p = tab.localToGlobal(Offset.zero, ancestor: anchor);
+    final l = p.dx + 15;
+    final w = tab.size.width - 30;
+    final animate = _shown && _placedAt != widget.page && !MediaQuery.disableAnimationsOf(context);
+    setState(() {
+      if (animate) {
+        // 从当前显示位置出发滑向新位置。
+        final k = _ease.transform(_indCtl.value);
+        _fromL += (_toL - _fromL) * k;
+        _fromW += (_toW - _fromW) * k;
+        _toL = l;
+        _toW = w;
+        _indCtl.forward(from: 0);
+      } else {
+        _fromL = _toL = l;
+        _fromW = _toW = w;
+        _indCtl.value = 0;
+      }
+      _shown = true;
+      _placedAt = widget.page;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = AppState.of(context);
     final c = Eg.of(context).c;
     final t = (k) => app.langs.t(k);
+    final page = widget.page;
+    final onGo = widget.onGo;
 
     final tabs = <(ShellPage, String, String)>[
       (ShellPage.home, t('nav.home'), ''),
@@ -467,21 +648,57 @@ class TopBar extends StatelessWidget {
               Text('EGLAN', style: egDisplay(c, size: 15, letterSpacing: 0.02)),
             ],
           ),
-          const Spacer(),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final (target, label, cnt) in tabs)
-                _Tab(
-                  c: c,
-                  label: label,
-                  cnt: cnt,
-                  active: page == target,
-                  onTap: () => onGo(target),
-                ),
-            ],
+          Expanded(
+            child: SizedBox(
+              height: double.infinity,
+              child: Stack(
+                key: _anchor,
+                children: [
+                  Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final (target, label, cnt) in tabs)
+                          _Tab(
+                            c: c,
+                            label: label,
+                            cnt: cnt,
+                            tabKey: _tabs[target],
+                            active: page == target,
+                            onTap: () => onGo(target),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // 下滑线:整条导航唯一的滑线,切页时自旧页签滑向新页签。
+                  AnimatedBuilder(
+                    animation: _indCtl,
+                    builder: (context, _) {
+                      final k = _ease.transform(_indCtl.value);
+                      return Positioned(
+                        left: _fromL + (_toL - _fromL) * k,
+                        bottom: 0,
+                        child: IgnorePointer(
+                          child: AnimatedOpacity(
+                            opacity: _shown ? 1 : 0,
+                            duration: const Duration(milliseconds: 200),
+                            child: Container(
+                              height: 2,
+                              width: _fromW + (_toW - _fromW) * k,
+                              decoration: BoxDecoration(
+                                color: c.acc,
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
-          const Spacer(),
           if (app.inRoom)
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -500,13 +717,15 @@ class TopBar extends StatelessWidget {
   }
 }
 
+// 顶栏页签:自身只保留透明占位边,激活指示由整条导航唯一的滑线表达。
 class _Tab extends StatefulWidget {
   final EgColors c;
   final String label;
   final String cnt;
   final bool active;
   final VoidCallback onTap;
-  const _Tab({required this.c, required this.label, required this.cnt, required this.active, required this.onTap});
+  final Key? tabKey;
+  const _Tab({required this.c, required this.label, required this.cnt, required this.active, required this.onTap, this.tabKey});
 
   @override
   State<_Tab> createState() => _TabState();
@@ -526,10 +745,11 @@ class _TabState extends State<_Tab> {
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         child: AnimatedContainer(
+          key: widget.tabKey,
           duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.fromLTRB(15, 17, 15, 13),
           decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: widget.active ? c.acc : Colors.transparent, width: 2)),
+            border: Border(bottom: BorderSide(color: Colors.transparent, width: 2)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

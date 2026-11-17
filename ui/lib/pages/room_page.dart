@@ -34,7 +34,8 @@ class _RoomPageState extends State<RoomPage> {
     if (!app.inRoom) {
       return StaggerIn(
         children: [
-          const SizedBox(height: 48),
+          Text(app.langs.t('room.h1'), style: egDisplay(c, size: 30, letterSpacing: -0.01, height: 1.2)),
+          const SizedBox(height: 2),
           Text(app.langs.t('room.notInRoom'), style: egText(c, size: 13.5, color: c.muted)),
           const SizedBox(height: 18),
           Align(
