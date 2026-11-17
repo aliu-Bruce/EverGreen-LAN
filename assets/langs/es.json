@@ -121,5 +121,15 @@
   "proto.nav": "Naveg.",
   "proto.jump": "Ir a",
   "proto.onboard": "Guía inicial",
-  "proto.hint": "Esta barra es solo del prototipo; no existe en la app real"
+  "proto.hint": "Esta barra es solo del prototipo; no existe en la app real",
+  "status.idle": "Sin conexión",
+  "status.joining": "Uniéndose",
+  "join.peer": "Dirección del anfitrión",
+  "join.peerHint": "IP:puerto del anfitrión; en la misma red, usa la dirección local",
+  "join.needPeer": "Escribe primero la dirección del anfitrión",
+  "log.dial": "Conectando con el anfitrión {peer}",
+  "log.joined": "Te uniste. Dirección local {ip}",
+  "room.guestMeta": "En la sala de {host}",
+  "room.notInRoom": "No estás en una sala",
+  "err.bridgeMissing": "No se encontró egland.exe. Colócalo junto a la interfaz o en la carpeta dist del repositorio"
 }

@@ -121,5 +121,15 @@
   "proto.nav": "ナビ",
   "proto.jump": "移動",
   "proto.onboard": "初回起動ガイド",
-  "proto.hint": "このバーはプロトタイプ専用で、実際のソフトには存在しません"
+  "proto.hint": "このバーはプロトタイプ専用で、実際のソフトには存在しません",
+  "status.idle": "停止中",
+  "status.joining": "参加中",
+  "join.peer": "ホストのアドレス",
+  "join.peerHint": "ホスト PC の IP:ポート。同じネットワーク内では LAN アドレスを入力",
+  "join.needPeer": "先にホストのアドレスを入力してください",
+  "log.dial": "ホスト {peer} に接続中",
+  "log.joined": "参加しました。ローカルアドレス {ip}",
+  "room.guestMeta": "{host} の部屋に参加中",
+  "room.notInRoom": "部屋に参加していません",
+  "err.bridgeMissing": "コアの egland.exe が見つかりません。UI と同じフォルダか、リポジトリの dist に置いてください"
 }

@@ -1,0 +1,16 @@
+# This file configures the analyzer, which statically analyzes Dart code to
+# check for errors, warnings, and lints.
+#
+# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
+# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
+# invoked from the command line by running `flutter analyze`.
+
+# 零第三方依赖:不引入外部 lint 包,分析器走默认规则。
+
+analyzer:
+  exclude:
+    - build/**
+    - windows/**
+
+# Additional information about this file can be found at
+# https://dart.dev/guides/language/analysis-options

@@ -121,5 +121,15 @@
   "proto.nav": "내비",
   "proto.jump": "바로가기",
   "proto.onboard": "첫 실행 안내",
-  "proto.hint": "이 막대는 프로토타입 전용이며 실제 소프트웨어에는 없습니다"
+  "proto.hint": "이 막대는 프로토타입 전용이며 실제 소프트웨어에는 없습니다",
+  "status.idle": "대기 중",
+  "status.joining": "참가 중",
+  "join.peer": "방장 주소",
+  "join.peerHint": "방장 PC의 IP:포트, 같은 네트워크에서는 내부 주소를 입력",
+  "join.needPeer": "먼저 방장 주소를 입력하세요",
+  "log.dial": "방장 {peer} 에 연결 중",
+  "log.joined": "방에 참가했습니다. 내 주소 {ip}",
+  "room.guestMeta": "{host} 님의 방에 참가 중",
+  "room.notInRoom": "방에 참가하지 않았습니다",
+  "err.bridgeMissing": "핵심 프로그램 egland.exe 를 찾을 수 없습니다. UI와 같은 폴더나 저장소의 dist 에 두세요"
 }

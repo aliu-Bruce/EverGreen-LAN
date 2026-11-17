@@ -1,0 +1,47 @@
+name: eglan_ui
+description: "EverGreen LAN 界面"
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.14.0
+
+# 界面依赖:仅 Flutter 官方框架包(material 已随 SDK 3.47+ 迁出为 material_ui),
+# 其余持久化/协议全部手写,无任何第三方库。
+dependencies:
+  flutter:
+    sdk: flutter
+  material_ui: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/langs/
+    - assets/icon/
+
+  # 字体全部为 SIL OFL 授权;汉字与拉丁同角色分流见 lib/theme.dart。
+  # 可变字体(Fraunces/Hanken/JetBrains Mono)取默认实例,权重由
+  # TextStyle.fontVariations 施加 wght 轴;Noto SC 为静态字重直接声明。
+  fonts:
+    - family: Fraunces
+      fonts:
+        - asset: assets/fonts/Fraunces-Variable.ttf
+    - family: Hanken Grotesk
+      fonts:
+        - asset: assets/fonts/HankenGrotesk-Variable.ttf
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Variable.ttf
+    - family: Noto Sans SC
+      fonts:
+        - asset: assets/fonts/zh/NotoSansSC-Regular.otf
+          weight: 400
+    - family: Noto Serif SC
+      fonts:
+        - asset: assets/fonts/zh/NotoSerifSC-SemiBold.otf
+          weight: 600

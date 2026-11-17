@@ -121,5 +121,15 @@
   "proto.nav": "Nav",
   "proto.jump": "Go to",
   "proto.onboard": "First-run guide",
-  "proto.hint": "This control bar exists only in the prototype, not in the real app"
+  "proto.hint": "This control bar exists only in the prototype, not in the real app",
+  "status.idle": "Idle",
+  "status.joining": "Joining",
+  "join.peer": "Host address",
+  "join.peerHint": "Host's IP:port — on the same network, use the LAN address",
+  "join.needPeer": "Enter the host address first",
+  "log.dial": "Connecting to host {peer}",
+  "log.joined": "Joined. Local address {ip}",
+  "room.guestMeta": "Joined {host}'s room",
+  "room.notInRoom": "You are not in a room",
+  "err.bridgeMissing": "Core binary egland.exe not found. Put it next to the UI, or in the repo's dist folder"
 }

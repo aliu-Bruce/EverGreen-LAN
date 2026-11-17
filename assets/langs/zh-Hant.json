@@ -121,5 +121,15 @@
   "proto.nav": "導覽",
   "proto.jump": "直達",
   "proto.onboard": "首次啟動引導",
-  "proto.hint": "控制列僅用於演示,真實軟體中不存在"
+  "proto.hint": "控制列僅用於演示,真實軟體中不存在",
+  "status.idle": "未開啟",
+  "status.joining": "正在加入",
+  "join.peer": "房主位址",
+  "join.peerHint": "房主電腦的 IP:連接埠,同一網路下填區網位址",
+  "join.needPeer": "請先填寫房主位址",
+  "log.dial": "正在連接房主 {peer}",
+  "log.joined": "已加入房間,本機位址 {ip}",
+  "room.guestMeta": "已加入 {host} 的房間",
+  "room.notInRoom": "當前不在房間中",
+  "err.bridgeMissing": "未找到核心程式 egland.exe。請把它放在介面程式同一目錄,或儲存庫的 dist 目錄下"
 }

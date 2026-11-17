@@ -121,5 +121,15 @@
   "proto.nav": "导航",
   "proto.jump": "直达",
   "proto.onboard": "首次启动引导",
-  "proto.hint": "控制条仅用于演示,真实软件中不存在"
+  "proto.hint": "控制条仅用于演示,真实软件中不存在",
+  "status.idle": "未开启",
+  "status.joining": "正在加入",
+  "join.peer": "房主地址",
+  "join.peerHint": "房主电脑的 IP:端口,同一网络下填局域网地址",
+  "join.needPeer": "请先填写房主地址",
+  "log.dial": "正在连接房主 {peer}",
+  "log.joined": "已加入房间,本机地址 {ip}",
+  "room.guestMeta": "已加入 {host} 的房间",
+  "room.notInRoom": "当前不在房间中",
+  "err.bridgeMissing": "未找到核心程序 egland.exe。请把它放在界面程序同一目录,或仓库的 dist 目录下"
 }
