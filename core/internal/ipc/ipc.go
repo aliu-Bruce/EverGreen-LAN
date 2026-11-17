@@ -10,6 +10,9 @@
 //	事件  {"type":"event","name":"room-up|room-down", …}
 //	名册  {"type":"members","list":[{"name":"…","ip":"…","pub":"…"}]}
 //
+// 每条请求可带 "id":核心在应答与该请求引发的错误、room-up 里原样带回,
+// 供界面把异步结果与请求关联;不带 id 则应答也不含 id。
+//
 // 一次一个房间:同进程串行承载 host 或 client 之一;
 // 界面关闭管道即视为退出指令,核心打扫干净(关网卡、关监听)再走。
 package ipc
@@ -54,8 +57,10 @@ func DefaultName() string {
 }
 
 // request 是界面发来的一条请求;缺省字段由核心补齐。
+// ID 由界面侧生成,核心原样带回,用于异步应答的关联。
 type request struct {
 	Op      string `json:"op"`
+	ID      string `json:"id"`
 	Code    string `json:"code"`
 	Name    string `json:"name"`
 	Peer    string `json:"peer"`
@@ -115,13 +120,13 @@ func (b *Bridge) dispatch(line string) {
 	case "join":
 		b.opJoin(req)
 	case "stop":
-		b.opStop()
+		b.opStop(req)
 	case "status":
-		b.opStatus()
+		b.opStatus(req)
 	case "members":
-		b.opMembers()
+		b.opMembers(req)
 	default:
-		b.errf("未知操作 %q", req.Op)
+		b.errID(req.ID, "未知操作 %q", req.Op)
 	}
 }
 
@@ -136,27 +141,36 @@ func (b *Bridge) errf(format string, args ...any) {
 	b.send(map[string]any{"type": "err", "message": fmt.Sprintf(format, args...)})
 }
 
+// errID 带请求 id 的错误应答,供界面关联。
+func (b *Bridge) errID(id, format string, args ...any) {
+	fields := map[string]any{"type": "err", "message": fmt.Sprintf(format, args...)}
+	if id != "" {
+		fields["id"] = id
+	}
+	b.send(fields)
+}
+
 // opStartHost 开房间:建卡(需管理员)→ 放行 → 监听 → 收泵。
 // 本地操作,同步完成并应答;失败时状态不变。
 func (b *Bridge) opStartHost(req request) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.state != "idle" {
-		b.errf("已在房间中(%s),请先 stop", b.state)
+		b.errID(req.ID, "已在房间中(%s),请先 stop", b.state)
 		return
 	}
 	code := req.Code
 	if code == "" {
 		generated, err := room.NewCode()
 		if err != nil {
-			b.errf("生成房间码失败: %v", err)
+			b.errID(req.ID, "生成房间码失败: %v", err)
 			return
 		}
 		code = generated
 	}
 	psk := room.Normalize(code)
 	if len(psk) == 0 {
-		b.errf("房间码无效")
+		b.errID(req.ID, "房间码无效")
 		return
 	}
 	name := req.Name
@@ -181,33 +195,33 @@ func (b *Bridge) opStartHost(req request) {
 	}
 	id, err := crypto.NewIdentity()
 	if err != nil {
-		b.errf("生成本机身份失败: %v", err)
+		b.errID(req.ID, "生成本机身份失败: %v", err)
 		return
 	}
 	dev, err := tun.New(tun.Config{Name: adapter, CIDR: cidr, MTU: mtu})
 	if err != nil {
-		b.errf("建虚拟网卡失败(需要管理员权限): %v", err)
+		b.errID(req.ID, "建虚拟网卡失败(需要管理员权限): %v", err)
 		return
 	}
 	firewall.Open(listen)
 	pc, err := mesh.Bind(listen)
 	if err != nil {
 		dev.Close()
-		b.errf("监听 UDP 端口 %d 失败: %v", listen, err)
+		b.errID(req.ID, "监听 UDP 端口 %d 失败: %v", listen, err)
 		return
 	}
 	h, err := mesh.NewHostOn(pc, psk, id, name, cidr)
 	if err != nil {
 		pc.Close()
 		dev.Close()
-		b.errf("房间初始化失败: %v", err)
+		b.errID(req.ID, "房间初始化失败: %v", err)
 		return
 	}
 	h.Start()
 	b.host, b.dev, b.code, b.self, b.state = h, dev, code, cidr, "hosting"
 	go b.pumpOut(dev, h)
 	go b.pumpIn(dev, localSource{ch: h.LocalOut(), done: h.Done()})
-	b.send(map[string]any{"type": "ok", "state": "hosting", "code": room.Display(code), "self": cidr, "name": name})
+	b.send(map[string]any{"type": "ok", "id": req.ID, "state": "hosting", "code": room.Display(code), "self": cidr, "name": name})
 }
 
 // opJoin 入房:网络握手可能慢(最多 15 秒),先回执 joining,完成后发 room-up 事件。
@@ -215,18 +229,18 @@ func (b *Bridge) opJoin(req request) {
 	b.mu.Lock()
 	if b.state != "idle" {
 		b.mu.Unlock()
-		b.errf("已在房间中(%s),请先 stop", b.state)
+		b.errID(req.ID, "已在房间中(%s),请先 stop", b.state)
 		return
 	}
 	if req.Peer == "" || req.Code == "" {
 		b.mu.Unlock()
-		b.errf("join 需要 code 与 peer(host:port)")
+		b.errID(req.ID, "join 需要 code 与 peer(host:port)")
 		return
 	}
 	psk := room.Normalize(req.Code)
 	if len(psk) == 0 {
 		b.mu.Unlock()
-		b.errf("房间码无效")
+		b.errID(req.ID, "房间码无效")
 		return
 	}
 	name := req.Name
@@ -243,24 +257,25 @@ func (b *Bridge) opJoin(req request) {
 	}
 	b.state = "joining"
 	b.mu.Unlock()
-	b.send(map[string]any{"type": "ok", "state": "joining"})
+	b.send(map[string]any{"type": "ok", "id": req.ID, "state": "joining"})
 
+	jid := req.ID
 	go func() {
 		id, err := crypto.NewIdentity()
 		if err != nil {
-			b.joinFailed(err)
+			b.joinFailed(jid, err)
 			return
 		}
 		g, err := mesh.DialGuest(req.Peer, psk, id, name, 15*time.Second)
 		if err != nil {
-			b.joinFailed(err)
+			b.joinFailed(jid, err)
 			return
 		}
 		cidr := g.SelfNet().String()
 		dev, err := tun.New(tun.Config{Name: adapter, CIDR: cidr, MTU: mtu})
 		if err != nil {
 			g.Close()
-			b.joinFailed(fmt.Errorf("建虚拟网卡失败(需要管理员权限): %w", err))
+			b.joinFailed(jid, fmt.Errorf("建虚拟网卡失败(需要管理员权限): %w", err))
 			return
 		}
 		b.mu.Lock()
@@ -274,32 +289,36 @@ func (b *Bridge) opJoin(req request) {
 		b.mu.Unlock()
 		go b.pumpOut(dev, g)
 		go b.pumpIn(dev, g)
-		b.send(map[string]any{"type": "event", "name": "room-up", "state": "joined", "self": cidr, "host": g.HostName()})
+		fields := map[string]any{"type": "event", "name": "room-up", "state": "joined", "self": cidr, "host": g.HostName()}
+		if jid != "" {
+			fields["id"] = jid
+		}
+		b.send(fields)
 	}()
 }
 
-// joinFailed 把 joining 回退到 idle 并回报原因。
-func (b *Bridge) joinFailed(err error) {
+// joinFailed 把 joining 回退到 idle 并回报原因;id 用于界面关联本次入房请求。
+func (b *Bridge) joinFailed(id string, err error) {
 	b.mu.Lock()
 	if b.state == "joining" {
 		b.state = "idle"
 	}
 	b.mu.Unlock()
-	b.errf("加入失败: %v", err)
+	b.errID(id, "加入失败: %v", err)
 }
 
 // opStop 停止并打扫;幂等。
-func (b *Bridge) opStop() {
+func (b *Bridge) opStop(req request) {
 	b.mu.Lock()
 	b.teardownLocked()
 	b.mu.Unlock()
-	b.send(map[string]any{"type": "ok", "state": "idle"})
+	b.send(map[string]any{"type": "ok", "id": req.ID, "state": "idle"})
 }
 
 // opStatus 报告当前状态与房间信息。
-func (b *Bridge) opStatus() {
+func (b *Bridge) opStatus(req request) {
 	b.mu.Lock()
-	fields := map[string]any{"type": "status", "state": b.state}
+	fields := map[string]any{"type": "status", "id": req.ID, "state": b.state}
 	if b.code != "" {
 		fields["code"] = room.Display(b.code)
 	}
@@ -311,7 +330,7 @@ func (b *Bridge) opStatus() {
 }
 
 // opMembers 报告在房名册:主机给全员,成员侧只给主机一行。
-func (b *Bridge) opMembers() {
+func (b *Bridge) opMembers(req request) {
 	b.mu.Lock()
 	var list []mesh.MemberInfo
 	switch b.state {
@@ -323,11 +342,12 @@ func (b *Bridge) opMembers() {
 			Pub:  hex.EncodeToString(b.guest.PeerPub()),
 		}}
 	}
+	state := b.state
 	b.mu.Unlock()
 	if list == nil {
 		list = []mesh.MemberInfo{}
 	}
-	b.send(map[string]any{"type": "members", "state": b.state, "list": list})
+	b.send(map[string]any{"type": "members", "id": req.ID, "state": state, "list": list})
 }
 
 // roomDown 房间因内部错误终止:打扫并广播事件;stop 已打扫时静默。
