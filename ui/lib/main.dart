@@ -65,16 +65,20 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   ShellPage _page = ShellPage.home;
+  bool _wasInRoom = false;
 
-  // 页面跳转:入房自动跳房间页,离房回主页。
+  // 状态变化时才自动跳转:刚入房→房间页,刚离房→回主页。
+  // 手动点导航不受影响:空闲时也允许看房间页的空态说明。
   void _followState() {
     final app = AppState.of(context);
     if (!mounted) return;
-    if (app.inRoom && _page != ShellPage.room && _page != ShellPage.join) {
-      setState(() => _page = ShellPage.room);
-    } else if (!app.inRoom && _page == ShellPage.room) {
-      setState(() => _page = ShellPage.home);
+    final nowIn = app.inRoom;
+    if (nowIn && !_wasInRoom) {
+      if (_page != ShellPage.room) setState(() => _page = ShellPage.room);
+    } else if (!nowIn && _wasInRoom) {
+      if (_page == ShellPage.room) setState(() => _page = ShellPage.home);
     }
+    _wasInRoom = nowIn;
   }
 
   void _goCreate() async {

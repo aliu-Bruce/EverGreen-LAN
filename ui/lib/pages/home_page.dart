@@ -47,28 +47,32 @@ class HomePage extends StatelessWidget {
         ),
 
         // 两块主行动:创建 1.7fr / 加入 1fr
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              flex: 17,
-              child: EgCTA(
-                title: app.langs.t('home.create'),
-                sub: app.langs.t('home.createSub'),
-                primary: true,
-                onTap: () => go(EgPageTarget.create),
+        // 在垂直滚动区里高度无界,Row 的 stretch 需 IntrinsicHeight 给出有界高度,
+        // 两块以较高者取齐。
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 17,
+                child: EgCTA(
+                  title: app.langs.t('home.create'),
+                  sub: app.langs.t('home.createSub'),
+                  primary: true,
+                  onTap: () => go(EgPageTarget.create),
+                ),
               ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              flex: 10,
-              child: EgCTA(
-                title: app.langs.t('home.join'),
-                sub: app.langs.t('home.joinSub'),
-                onTap: () => go(EgPageTarget.join),
+              const SizedBox(width: 14),
+              Expanded(
+                flex: 10,
+                child: EgCTA(
+                  title: app.langs.t('home.join'),
+                  sub: app.langs.t('home.joinSub'),
+                  onTap: () => go(EgPageTarget.join),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
 
         Sect(title: app.langs.t('home.found'), sub: app.langs.t('home.foundSub')),

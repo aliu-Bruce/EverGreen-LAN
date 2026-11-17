@@ -144,6 +144,19 @@ bool Win32Window::Create(const std::wstring& title,
     return false;
   }
 
+  // The monitor-DPI probe above can report 96 while the engine is not yet
+  // running, which would leave the window at unscaled size on a high-DPI
+  // monitor. GetDpiForWindow is authoritative once the window exists, so
+  // re-scale the window if the two disagree.
+  UINT window_dpi = GetDpiForWindow(window);
+  if (window_dpi != 0 && window_dpi != dpi) {
+    double real_factor = window_dpi / 96.0;
+    SetWindowPos(window, nullptr, Scale(origin.x, real_factor),
+                 Scale(origin.y, real_factor), Scale(size.width, real_factor),
+                 Scale(size.height, real_factor),
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+  }
+
   UpdateTheme(window);
 
   return OnCreate();

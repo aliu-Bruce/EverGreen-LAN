@@ -6,8 +6,15 @@ import '../theme.dart';
 import '../widgets/eg.dart';
 import '../widgets/fx.dart';
 
-class TransferPage extends StatelessWidget {
+class TransferPage extends StatefulWidget {
   const TransferPage({super.key});
+
+  @override
+  State<TransferPage> createState() => _TransferPageState();
+}
+
+class _TransferPageState extends State<TransferPage> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
@@ -26,30 +33,34 @@ class TransferPage extends StatelessWidget {
             ),
           ],
         ),
+        // 原型的 .drop 自身就是一张虚线卡:虚线边即边界,无面板底;
+        // 悬停时描边点亮、底色浮现、整体上浮 2px。
         Padding(
-          padding: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.only(top: 22),
           child: MouseRegion(
             cursor: SystemMouseCursors.basic,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 48),
-              decoration: BoxDecoration(
-                color: c.panel,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: c.panelShadow,
-              ),
+            onEnter: (_) => setState(() => _hover = true),
+            onExit: (_) => setState(() => _hover = false),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
               child: DashedBorder(
-                color: c.line2,
+                color: _hover ? c.acc : c.line2,
                 radius: 18,
-                child: Column(
-                  children: [
-                    PixelArt(rects: egChainArt(c), cols: 14, rows: 10, scale: 7),
-                    const SizedBox(height: 10),
-                    Text(app.langs.t('tr.drop'), style: egDisplay(c, size: 16)),
-                    const SizedBox(height: 8),
-                    Text(app.langs.t('tr.dropSub'), style: egText(c, size: 12.5, color: c.faint)),
-                    const SizedBox(height: 14),
-                    EgChip(app.langs.t('chip.wip')),
-                  ],
+                child: Container(
+                  color: _hover ? c.panel2 : null,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 48),
+                  child: Column(
+                    children: [
+                      PixelArt(rects: egChainArt(c), cols: 14, rows: 10, scale: 7),
+                      const SizedBox(height: 10),
+                      Text(app.langs.t('tr.drop'), style: egDisplay(c, size: 16)),
+                      const SizedBox(height: 8),
+                      Text(app.langs.t('tr.dropSub'), style: egText(c, size: 12.5, color: c.faint)),
+                      const SizedBox(height: 14),
+                      EgChip(app.langs.t('chip.wip')),
+                    ],
+                  ),
                 ),
               ),
             ),
