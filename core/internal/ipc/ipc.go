@@ -6,6 +6,7 @@
 //	请求  {"op":"start-host", "code":"…", "name":"…"}   开房间;code 留空自动生成
 //	      {"op":"join", "code":"…", "peer":"host:port"} 入房;先回执 joining,完成后发 room-up 事件
 //	      {"op":"stop"} {"op":"status"} {"op":"members"}
+//	      {"op":"stun","server":"stun.example:3478"} 从房间套接字探测公网映射
 //	      {"op":"env"} {"op":"restart-admin","exe":"…"}
 //	应答  {"type":"ok", …} / {"type":"err","message":"…"}
 //	      {"type":"env","admin":false,"canElevate":true}
@@ -79,6 +80,7 @@ type request struct {
 	MTU     int    `json:"mtu"`
 	CIDR    string `json:"cidr"`
 	Exe     string `json:"exe"`
+	Server  string `json:"server"`
 }
 
 // Bridge 持有房间状态机与全部连接;方法并发安全。
@@ -144,6 +146,8 @@ func (b *Bridge) dispatch(line string) {
 		b.opStatus(req)
 	case "members":
 		b.opMembers(req)
+	case "stun":
+		b.opStun(req)
 	case "env":
 		b.opEnv(req)
 	case "restart-admin":
@@ -324,7 +328,11 @@ func (b *Bridge) opStartHost(req request) {
 	b.host, b.dev, b.code, b.self, b.state = h, dev, code, cidr, "hosting"
 	go b.pumpOut(dev, h)
 	go b.pumpIn(dev, localSource{ch: h.LocalOut(), done: h.Done()})
-	b.send(map[string]any{"type": "ok", "id": req.ID, "state": "hosting", "code": room.Display(code), "self": cidr, "name": name})
+	b.send(map[string]any{
+		"type": "ok", "id": req.ID, "state": "hosting",
+		"code": room.Display(code), "self": cidr, "name": name,
+		"port": listen, "lan": disc.LocalPeers(listen),
+	})
 }
 
 // opJoin 入房:网络握手可能慢(最多 15 秒),先回执 joining,完成后发 room-up 事件。
@@ -454,6 +462,24 @@ func (b *Bridge) opMembers(req request) {
 		list = []mesh.MemberInfo{}
 	}
 	b.send(map[string]any{"type": "members", "id": req.ID, "state": state, "list": list})
+}
+
+// opStun 从房间自身的 UDP 套接字探测公网映射;只有开房后套接字才存在。
+// 探测是一次用户显式动作,不做后台轮询。
+func (b *Bridge) opStun(req request) {
+	b.mu.Lock()
+	host, state := b.host, b.state
+	b.mu.Unlock()
+	if state != "hosting" || host == nil {
+		b.errID(req.ID, "只有开房后才能探测公网地址")
+		return
+	}
+	addr, err := host.ProbeSTUN(req.Server, 4*time.Second)
+	if err != nil {
+		b.errID(req.ID, "探测公网地址失败: %v", err)
+		return
+	}
+	b.send(map[string]any{"type": "ok", "id": req.ID, "ip": addr.IP.String(), "port": addr.Port})
 }
 
 // roomDown 房间因内部错误终止:打扫并广播事件;stop 已打扫时静默。

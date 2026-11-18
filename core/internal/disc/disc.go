@@ -364,6 +364,22 @@ func targets() []target {
 	return out
 }
 
+// LocalPeers 返回本机各可用网卡的 host:port,供界面展示局域网地址。
+// 跳过环回、隧道网卡与无广播地址的接口;同一地址只保留一次。
+func LocalPeers(port int) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, 2)
+	for _, t := range targets() {
+		ip := t.ip.String()
+		if seen[ip] {
+			continue
+		}
+		seen[ip] = true
+		out = append(out, net.JoinHostPort(ip, strconv.Itoa(port)))
+	}
+	return out
+}
+
 func listenReuse(port int) (*net.UDPConn, error) {
 	lc := net.ListenConfig{Control: reuseAddr}
 	pc, err := lc.ListenPacket(context.Background(), "udp4", fmt.Sprintf(":%d", port))

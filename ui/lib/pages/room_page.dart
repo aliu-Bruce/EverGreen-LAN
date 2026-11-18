@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_state.dart';
+import '../core/invite.dart';
 import '../theme.dart';
 import '../widgets/eg.dart';
 import '../widgets/fx.dart';
@@ -21,6 +22,7 @@ class RoomPage extends StatefulWidget {
 class _RoomPageState extends State<RoomPage> {
   bool _guideOpen = false;
   bool _copied = false;
+  bool _inviteCopied = false;
   bool _hover = false;
 
   @override
@@ -123,9 +125,9 @@ class _RoomPageState extends State<RoomPage> {
         ),
 
         // 房间码(主机)或房主信息(成员)
-        if (hosting)
+        if (hosting) ...[
           Padding(
-            padding: const EdgeInsets.only(top: 22, bottom: 8),
+            padding: const EdgeInsets.only(top: 22, bottom: 12),
             child: EgCodeBlock(
               label: app.langs.t('room.code'),
               code: app.code ?? '',
@@ -139,8 +141,15 @@ class _RoomPageState extends State<RoomPage> {
                 });
               },
             ),
-          )
-        else
+          ),
+          _SharePanel(
+            app: app,
+            copied: _inviteCopied,
+            onProbe: () => app.probePublic(),
+            onCopy: () => _copyInvite(app),
+          ),
+          const SizedBox(height: 28),
+        ] else ...[
           Padding(
             padding: const EdgeInsets.only(top: 22, bottom: 8),
             child: EgPanel(
@@ -163,13 +172,8 @@ class _RoomPageState extends State<RoomPage> {
               ),
             ),
           ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 28),
-          child: Text(
-            app.langs.t('room.shareHint'),
-            style: egText(c, size: 12.5, color: c.faint),
-          ),
-        ),
+          const SizedBox(height: 28),
+        ],
 
         Sect(title: app.langs.t('room.members'), sub: app.langs.t('room.membersOnline', {'n': '$n'})),
         _MembersTable(app: app, hosting: hosting),
@@ -221,6 +225,24 @@ class _RoomPageState extends State<RoomPage> {
     );
   }
 
+  String _inviteText(AppState app) {
+    final peer = app.invitePeer;
+    if (peer == null || app.code == null) return '';
+    final code = EgInvite.normalizeCode(app.code!);
+    return '${app.langs.t('invite.text', {'code': app.code})}\n${EgInvite.build(code, peer)}';
+  }
+
+  void _copyInvite(AppState app) async {
+    final text = _inviteText(app);
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    setState(() => _inviteCopied = true);
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _inviteCopied = false);
+    });
+  }
+
   void _showQr(BuildContext context, AppState app) {
     final c = Eg.of(context).c;
     showDialog<void>(
@@ -245,6 +267,110 @@ class _RoomPageState extends State<RoomPage> {
         ),
         actions: [
           EgButton(label: app.langs.t('btn.close'), small: true, onPressed: () => Navigator.of(context).pop()),
+        ],
+      ),
+    );
+  }
+}
+
+// 房主分享面板:局域网地址常驻,公网映射按需探测;邀请优先带公网地址。
+class _SharePanel extends StatelessWidget {
+  final AppState app;
+  final bool copied;
+  final VoidCallback onProbe;
+  final VoidCallback onCopy;
+  const _SharePanel({required this.app, required this.copied, required this.onProbe, required this.onCopy});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Eg.of(context).c;
+    final t = app.langs.t;
+    final publicAddr = app.publicAddr;
+    final hasPeer = app.invitePeer != null;
+    final mapHint = publicAddr == null
+        ? t('room.needMap', {'local': app.prefs.port})
+        : t('room.mapHint', {'pub': app.publicPort ?? '—', 'local': app.prefs.port});
+
+    return EgPanel(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(t('room.shareTitle'), style: egText(c, size: 13, weight: FontWeight.w600, height: 1.5)),
+                      const SizedBox(height: 3),
+                      Text(t('room.shareHint'), style: egText(c, size: 12, color: c.muted, height: 1.55)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 14),
+                EgButton(label: app.stunRunning ? t('btn.probing') : t('btn.probe'), small: true, onPressed: app.stunRunning ? null : onProbe),
+                const SizedBox(width: 8),
+                EgButton(
+                  label: copied ? t('btn.copied') : t('btn.copyInvite'),
+                  kind: EgBtnKind.primary,
+                  small: true,
+                  onPressed: hasPeer ? onCopy : null,
+                ),
+              ],
+            ),
+          ),
+          Container(height: 1, color: c.line),
+          _ShareRow(
+            c: c,
+            label: t('room.lan'),
+            value: app.lanAddrs.isNotEmpty ? app.lanAddrs.first : '—',
+            color: c.text,
+          ),
+          _ShareRow(
+            c: c,
+            label: t('room.public'),
+            value: publicAddr ?? t('room.unprobed'),
+            color: publicAddr == null ? c.faint : c.acc,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (app.stunError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: SelectableText(app.stunError!, style: egText(c, size: 11.5, color: c.bad, height: 1.5)),
+                  ),
+                Text(mapHint, style: egText(c, size: 11.5, color: c.faint, height: 1.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShareRow extends StatelessWidget {
+  final EgColors c;
+  final String label;
+  final String value;
+  final Color color;
+  const _ShareRow({required this.c, required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      child: Row(
+        children: [
+          SizedBox(width: 86, child: Text(label, style: egText(c, size: 11.5, color: c.muted, height: 1.4))),
+          Expanded(
+            child: SelectableText(value, style: egMono(c, size: 13, color: color, height: 1.4)),
+          ),
         ],
       ),
     );

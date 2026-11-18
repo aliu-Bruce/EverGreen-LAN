@@ -6,12 +6,15 @@ enum EgThemeMode { light, dark, system }
 enum EgNavMode { side, top }
 
 class Prefs {
+  static const defaultStun = 'stun.l.google.com:19302';
+
   EgThemeMode themeMode = EgThemeMode.dark;
   EgNavMode navMode = EgNavMode.side;
   String lang = '';
   String name = '';
   int port = 47777;
   int mtu = 1400;
+  String stun = defaultStun;
   bool onboarded = false;
 
   File? _file;
@@ -39,6 +42,7 @@ class Prefs {
       name = (obj['name'] as String?) ?? '';
       port = (obj['port'] as num?)?.toInt() ?? 47777;
       mtu = (obj['mtu'] as num?)?.toInt() ?? 1400;
+      stun = (obj['stun'] as String?) ?? defaultStun;
       onboarded = obj['onboarded'] == true;
     } catch (_) {}
   }
@@ -56,6 +60,7 @@ class Prefs {
         'name': name,
         'port': port,
         'mtu': mtu,
+        'stun': stun,
         'onboarded': onboarded,
       }));
     } catch (_) {}

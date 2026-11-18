@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_state.dart';
+import '../core/invite.dart';
 import '../theme.dart';
 import '../widgets/eg.dart';
 import '../widgets/fx.dart';
@@ -43,6 +44,17 @@ class _JoinPageState extends State<JoinPage> with TickerProviderStateMixin {
   void _paste() async {
     final text = (await Clipboard.getData('text/plain'))?.text?.trim() ?? '';
     if (text.isEmpty) return;
+    final invite = EgInvite.parse(text);
+    if (invite != null) {
+      final code = invite.code;
+      setState(() {
+        _seg1.text = code.substring(0, code.length.clamp(0, 4));
+        _seg2.text = code.substring(4, code.length.clamp(4, 8));
+        if (invite.peer != null) _peer.text = invite.peer!;
+      });
+      return;
+    }
+    // 不是邀请链接时退回旧行为:从任意文本里提取房间码。
     final b = StringBuffer();
     for (final r in text.runes) {
       final ch = String.fromCharCode(r).toUpperCase();
@@ -131,7 +143,7 @@ class _JoinPageState extends State<JoinPage> with TickerProviderStateMixin {
               children: [
                 EgInput(controller: _peer, width: 240, mono: true, hint: 'IP:${app.prefs.port}', focusNode: _peerFocus),
                 const SizedBox(width: 12),
-                EgButton(label: app.langs.t('btn.paste'), small: true, onPressed: _paste),
+                EgButton(label: app.langs.t('btn.pasteInvite'), small: true, onPressed: _paste),
               ],
             ),
             const SizedBox(height: 6),

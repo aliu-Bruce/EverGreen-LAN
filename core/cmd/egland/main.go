@@ -27,6 +27,7 @@ import (
 	"eglan/internal/ipc"
 	"eglan/internal/mesh"
 	"eglan/internal/room"
+	"eglan/internal/stun"
 	"eglan/internal/tun"
 )
 
@@ -361,6 +362,34 @@ func testEcho() error {
 
 	// 成员名册:正式成员两人(错码者不曾入房)
 	check("成员名册计 2 人", len(host.Members()) == 2)
+
+	// STUN:本地假服务器回显请求来源。只有从房间套接字发出的探测,
+	// 才能拿到与监听端口一致且来源可匹配的映射地址。
+	stunSrv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		host.Close()
+		return err
+	}
+	defer stunSrv.Close()
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			n, from, err := stunSrv.ReadFromUDP(buf)
+			if err != nil {
+				return
+			}
+			tx, ok := stun.TransactionIDOf(buf[:n])
+			if !ok {
+				continue
+			}
+			_, _ = stunSrv.WriteToUDP(stun.BuildBindingSuccess(tx, from), from)
+		}
+	}()
+	mapped, errMap := host.ProbeSTUN(stunSrv.LocalAddr().String(), 2*time.Second)
+	check("STUN:从房间套接字探测到映射地址",
+		errMap == nil && mapped != nil &&
+			mapped.Port == pc.LocalAddr().(*net.UDPAddr).Port &&
+			mapped.IP.IsLoopback())
 
 	// 防重放:同一会话重收已消费的旧帧必须被拒
 	s1, err := crypto.Exchange(hostID, g1ID.Pub, true, psk)

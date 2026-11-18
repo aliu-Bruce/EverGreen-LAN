@@ -1,5 +1,5 @@
-// 设置页:外观(主题/导航)、身份(用户名)、权限、网络(端口/MTU)、关于。
-// 只放有真实后端支撑的项;STUN、自启、主题包随插件系统发布,暂不出现。
+// 设置页:外观(主题/导航)、身份(用户名)、权限、网络(端口/MTU/STUN)、关于。
+// 只放有真实后端支撑的项。
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
@@ -23,6 +23,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final TextEditingController _name = TextEditingController();
   final TextEditingController _port = TextEditingController();
   final TextEditingController _mtu = TextEditingController();
+  final TextEditingController _stun = TextEditingController();
   bool _inited = false;
   bool _restarting = false;
 
@@ -34,6 +35,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _name.text = app.prefs.name;
       _port.text = '${app.prefs.port}';
       _mtu.text = '${app.prefs.mtu}';
+      _stun.text = app.prefs.stun;
       _inited = true;
     }
   }
@@ -43,6 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _name.dispose();
     _port.dispose();
     _mtu.dispose();
+    _stun.dispose();
     super.dispose();
   }
 
@@ -55,6 +58,15 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     _port.text = '${app.prefs.port}';
     _mtu.text = '${app.prefs.mtu}';
+  }
+
+  // 留空表示仍用默认服务器;提交时把规范化后的值回填到输入框。
+  void _commitStun(AppState app) {
+    app.setStun(_stun.text);
+    _stun.text = app.prefs.stun.isEmpty ? Prefs.defaultStun : app.prefs.stun;
+    if (_stun.text != app.prefs.stun) {
+      app.setStun(_stun.text);
+    }
   }
 
   // 提权由核心发起(Windows runas);成功后本实例退出,新实例接管。
@@ -209,7 +221,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               _Row(
-                last: true,
+                last: false,
                 title: app.langs.t('set.mtu'),
                 hint: app.langs.t('set.mtuHint'),
                 ctl: EgInput(
@@ -218,6 +230,20 @@ class _SettingsPageState extends State<SettingsPage> {
                   maxLength: 4,
                   formatters: [FilteringTextInputFormatter.digitsOnly],
                   onSubmitted: (_) => _commitNet(app),
+                ),
+              ),
+              _Row(
+                last: true,
+                title: app.langs.t('set.stun'),
+                hint: app.langs.t('set.stunHint'),
+                ctl: EgInput(
+                  controller: _stun,
+                  width: 220,
+                  mono: true,
+                  hint: Prefs.defaultStun,
+                  maxLength: 128,
+                  onChanged: app.setStun,
+                  onSubmitted: (_) => _commitStun(app),
                 ),
               ),
             ],

@@ -36,6 +36,13 @@ class AppState extends ChangeNotifier {
   String? hostName;  // 房主机显示名(成员侧)
   List<Map<String, dynamic>> members = [];
 
+  // 公网直连:开房后核心给出局域网地址;探测给出 NAT 映射地址。
+  List<String> lanAddrs = [];
+  String? publicAddr; // ip:port
+  bool stunRunning = false;
+  String? stunError;
+  int _stunSeq = 0;
+
   // 局域网发现:核心在空闲时推送的房间快照与发现加入的失败原因。
   List<Map<String, dynamic>> discovered = [];
   String? discoverError;
@@ -123,6 +130,50 @@ class AppState extends ChangeNotifier {
     prefs.mtu = mtu;
     unawaited(prefs.save());
     notifyListeners();
+  }
+
+  // STUN 只影响下一次显式探测;换服务器后旧的公网地址不再可信。
+  void setStun(String server) {
+    final s = server.trim();
+    if (s == prefs.stun) return;
+    prefs.stun = s;
+    publicAddr = null;
+    stunError = null;
+    _stunSeq++;
+    stunRunning = false;
+    unawaited(prefs.save());
+    notifyListeners();
+  }
+
+  // 从房间套接字探测 NAT 映射;只有开房后核心才有可探测的套接字。
+  Future<void> probePublic() async {
+    if (room != RoomState.hosting || stunRunning) return;
+    final seq = ++_stunSeq;
+    stunRunning = true;
+    stunError = null;
+    notifyListeners();
+    String? error;
+    try {
+      final ack = await bridge.request({
+        'op': 'stun',
+        'server': prefs.stun,
+      }, timeout: const Duration(seconds: 8));
+      final ip = (ack['ip'] as String?)?.trim() ?? '';
+      final port = (ack['port'] as num?)?.toInt() ?? 0;
+      if (ip.isEmpty || port <= 0) {
+        error = langs.t('err.stunReply');
+      } else if (seq == _stunSeq && room == RoomState.hosting) {
+        publicAddr = '$ip:$port';
+      }
+    } on IpcError catch (e) {
+      error = e.message;
+    } finally {
+      if (seq == _stunSeq) {
+        stunRunning = false;
+        stunError = error;
+        notifyListeners();
+      }
+    }
   }
 
   void finishOnboarding() {
@@ -313,6 +364,10 @@ class AppState extends ChangeNotifier {
     if (codeField != null && codeField.isNotEmpty) code = codeField;
     if (self != null && self.isNotEmpty) selfIp = _ipOnly(self);
     if (host != null && host.isNotEmpty) hostName = host;
+    final lanField = fields['lan'];
+    if (lanField is List) {
+      lanAddrs = lanField.whereType<String>().toList();
+    }
   }
 
   void _setRoom(RoomState s) {
@@ -330,6 +385,11 @@ class AppState extends ChangeNotifier {
       _joinPending = false;
       _lastJoinId = '';
       _lastHostId = '';
+      lanAddrs = [];
+      publicAddr = null;
+      stunRunning = false;
+      stunError = null;
+      _stunSeq++;
     }
   }
 
@@ -383,6 +443,21 @@ class AppState extends ChangeNotifier {
       return '${parts[0]}.${parts[1]}.${parts[2]}.1';
     }
     return '—';
+  }
+
+  // 邀请里带的地址:优先公网映射;没有公网时用第一个局域网地址。
+  String? get invitePeer {
+    if (publicAddr != null && publicAddr!.isNotEmpty) return publicAddr;
+    if (lanAddrs.isNotEmpty) return lanAddrs.first;
+    return null;
+  }
+
+  int? get publicPort {
+    final a = publicAddr;
+    if (a == null) return null;
+    final i = a.lastIndexOf(':');
+    if (i < 0) return null;
+    return int.tryParse(a.substring(i + 1));
   }
 
   bool get inRoom => room == RoomState.hosting || room == RoomState.joined;

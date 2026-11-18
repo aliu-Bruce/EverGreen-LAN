@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"eglan/internal/crypto"
+	"eglan/internal/stun"
 )
 
 // 帧魔数取 7~8 字节,远长于常见前缀,避免与真实 IP 包撞形:
@@ -292,6 +293,9 @@ type Host struct {
 	byIP   map[string]*member
 	next   byte
 
+	stunMu sync.Mutex
+	stuns  map[stun.TransactionID]stunPending
+
 	localOut  chan []byte
 	done      chan struct{}
 	closeOnce sync.Once
@@ -325,6 +329,7 @@ func NewHostOn(pc *net.UDPConn, psk []byte, id *crypto.Identity, name, cidr stri
 		subnet: ipnet, selfIP: selfIP,
 		byAddr: map[string]*member{}, byPub: map[string]*member{}, byIP: map[string]*member{},
 		next:     2,
+		stuns:    map[stun.TransactionID]stunPending{},
 		localOut: make(chan []byte, 256),
 		done:     make(chan struct{}),
 	}, nil
@@ -346,8 +351,11 @@ func (h *Host) loop() {
 	}
 }
 
-// handle 按帧类型分派:握手登记,数据转发。
+// handle 按帧类型分派:STUN 探测响应优先,握手登记,数据转发。
 func (h *Host) handle(from *net.UDPAddr, frame []byte) {
+	if h.handleSTUN(from, frame) {
+		return
+	}
 	if _, name, ok := parseHello(frame, helloMagic); ok {
 		h.handshake(from, frame[len(helloMagic):len(helloMagic)+32], name)
 		return
@@ -375,6 +383,102 @@ func (h *Host) handle(from *net.UDPAddr, frame []byte) {
 		return
 	}
 	h.dispatch(m, payload)
+}
+
+// stunPending 是一次等待中的 STUN 探测:只接受来自目标服务器的响应。
+type stunPending struct {
+	server *net.UDPAddr
+	reply  chan stunResult
+}
+
+type stunResult struct {
+	addr *net.UDPAddr
+	err  error
+}
+
+// ProbeSTUN 从房间自身的 UDP 套接字向 STUN 服务器发一次 Binding 请求,
+// 返回该套接字在 NAT 上被映射到的公网地址。响应在 Host 收包循环里按
+// 事务标识与来源地址双重匹配,其他来源的报文一律不当成探测结果。
+func (h *Host) ProbeSTUN(server string, timeout time.Duration) (*net.UDPAddr, error) {
+	raddr, err := resolveSTUNServer(server)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := stun.NewTransactionID()
+	if err != nil {
+		return nil, err
+	}
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	reply := make(chan stunResult, 1)
+	h.stunMu.Lock()
+	h.stuns[tx] = stunPending{server: raddr, reply: reply}
+	h.stunMu.Unlock()
+	defer func() {
+		h.stunMu.Lock()
+		delete(h.stuns, tx)
+		h.stunMu.Unlock()
+	}()
+
+	if _, err := h.pc.WriteToUDP(stun.BuildBindingRequest(tx), raddr); err != nil {
+		return nil, fmt.Errorf("stun: 发送探测请求失败: %w", err)
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case r := <-reply:
+		if r.err != nil {
+			return nil, r.err
+		}
+		return r.addr, nil
+	case <-timer.C:
+		return nil, fmt.Errorf("stun: 等待 %s 响应超时", raddr)
+	case <-h.done:
+		return nil, fmt.Errorf("stun: 房间已结束")
+	}
+}
+
+// handleSTUN 在收包循环里消费 STUN 响应;返回 true 表示该报文不应再按房间帧处理。
+func (h *Host) handleSTUN(from *net.UDPAddr, frame []byte) bool {
+	if !stun.IsMessage(frame) {
+		return false
+	}
+	tx, ok := stun.TransactionIDOf(frame)
+	if !ok {
+		return true
+	}
+	h.stunMu.Lock()
+	p, waiting := h.stuns[tx]
+	if !waiting || !from.IP.Equal(p.server.IP) || from.Port != p.server.Port {
+		h.stunMu.Unlock()
+		return true // 未知事务或非目标服务器:静默丢弃
+	}
+	delete(h.stuns, tx)
+	h.stunMu.Unlock()
+	addr, err := stun.ParseSuccess(frame)
+	p.reply <- stunResult{addr: addr, err: err}
+	return true
+}
+
+// resolveSTUNServer 只解析 IPv4 服务器地址;省略端口时补 STUN 默认端口 3478。
+func resolveSTUNServer(server string) (*net.UDPAddr, error) {
+	server = strings.TrimSpace(server)
+	if server == "" {
+		server = stun.DefaultServer
+	}
+	host, port, err := net.SplitHostPort(server)
+	if err != nil {
+		host, port = server, "3478"
+	}
+	if host == "" || port == "" {
+		return nil, fmt.Errorf("stun: 服务器地址无效 %q", server)
+	}
+	raddr, err := net.ResolveUDPAddr("udp4", net.JoinHostPort(host, port))
+	if err != nil {
+		return nil, fmt.Errorf("stun: 无法解析服务器 %q: %w", server, err)
+	}
+	return raddr, nil
 }
 
 // handshake 登记 or 刷新成员:老成员按公钥认出,换地址换会话,保留隧道地址。
