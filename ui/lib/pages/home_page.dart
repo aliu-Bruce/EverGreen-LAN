@@ -75,12 +75,123 @@ class HomePage extends StatelessWidget {
           ),
         ),
 
-        Sect(title: app.langs.t('home.found'), sub: app.langs.t('home.foundSub')),
-        Text(
-          app.langs.t('home.empty'),
-          style: egText(c, size: 12.5, color: c.faint),
-        ),
+        // 发现只在空闲时有效:在房里(或正在入房)不展示陈旧的列表。
+        if (!app.inRoom) ...[
+          Sect(title: app.langs.t('home.found'), sub: app.langs.t('home.foundSub')),
+          if (app.discoverError != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: c.badDim,
+                border: Border.all(color: c.bad),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                app.discoverError!,
+                style: egMono(c, size: 11.5, color: c.bad, height: 1.5),
+              ),
+            ),
+          if (app.discovered.isEmpty)
+            Text(
+              app.langs.t('home.empty'),
+              style: egText(c, size: 12.5, color: c.faint, height: 1.6),
+            )
+          else
+            for (final room in app.discovered)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _FoundRoomCard(
+                  key: ValueKey('found-${room['code']}'),
+                  room: room,
+                  joining: app.isFoundJoining((room['code'] as String?) ?? ''),
+                  busy: app.room != RoomState.idle || app.joiningCode != null,
+                  onJoin: () => app.joinRoom(
+                    (room['code'] as String?) ?? '',
+                    (room['peer'] as String?) ?? '',
+                    fromDiscovery: true,
+                  ),
+                ),
+              ),
+        ],
       ],
+    );
+  }
+}
+
+// 发现房卡:房间名与在线人数取自信标,加入由核心直连主机完成。
+class _FoundRoomCard extends StatelessWidget {
+  final Map<String, dynamic> room;
+  final bool joining;
+  final bool busy;
+  final VoidCallback onJoin;
+  const _FoundRoomCard({super.key, required this.room, required this.joining, required this.busy, required this.onJoin});
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppState.of(context);
+    final c = Eg.of(context).c;
+    final name = ((room['name'] as String?) ?? '').trim();
+    final members = (room['members'] as num?)?.toInt() ?? 1;
+    final reduce = MediaQuery.disableAnimationsOf(context);
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(offset: Offset(0, (1 - t) * 8), child: child),
+      ),
+      child: EgPanel(
+        border: joining ? c.acc : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 13, 13, 13),
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: joining ? c.acc : c.acc.withValues(alpha: 0.62),
+                  shape: BoxShape.circle,
+                  boxShadow: joining
+                      ? [BoxShadow(color: c.acc.withValues(alpha: 0.45), blurRadius: 7)]
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name.isEmpty ? '—' : name,
+                      style: egText(c, size: 13.5, weight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      joining
+                          ? app.langs.t('status.joining')
+                          : app.langs.t('room.membersOnline', {'n': members}),
+                      style: egMono(c, size: 11, color: joining ? c.acc : c.muted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              EgButton(
+                label: app.langs.t('btn.join'),
+                kind: EgBtnKind.primary,
+                small: true,
+                onPressed: busy ? null : onJoin,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

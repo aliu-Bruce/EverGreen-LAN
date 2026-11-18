@@ -32,11 +32,18 @@ class AppState extends ChangeNotifier {
   String? hostName;  // 房主机显示名(成员侧)
   List<Map<String, dynamic>> members = [];
 
+  // 局域网发现:核心在空闲时推送的房间快照与发现加入的失败原因。
+  List<Map<String, dynamic>> discovered = [];
+  String? discoverError;
+  String? joiningCode; // 正在尝试加入的发现房间码,用于只标记那一张卡
+  bool _joinFromDiscovery = false;
+
   List<JoinLine> joinLog = [];
   String? joinError; // errterm 标题行(核心原文)
 
   String _lastJoinId = '';
   String _lastHostId = '';
+  bool _joinPending = false; // 请求已发出、首应答未回:挡住重复点击
   StreamSubscription<Map<String, dynamic>>? _sub;
 
   // ---- 启动 ----
@@ -123,6 +130,7 @@ class AppState extends ChangeNotifier {
   // 开房间;返回 null 表示已进入 hosting,非 null 为错误原文(需要管理员等)。
   Future<String?> createRoom() async {
     if (room != RoomState.idle) return null;
+    discoverError = null;
     _lastHostId = '';
     try {
       final ack = await bridge.request({
@@ -140,9 +148,14 @@ class AppState extends ChangeNotifier {
   }
 
   // 入房;ack 后由 room-up 事件推进到 joined,失败回报走 err(带同一 id)。
-  Future<void> joinRoom(String displayCode, String peer) async {
-    if (room != RoomState.idle) return;
-    joinError = null;
+  // fromDiscovery 为真时失败原因走 discoverError,留在主页内联提示。
+  Future<void> joinRoom(String displayCode, String peer, {bool fromDiscovery = false}) async {
+    if (room != RoomState.idle || _joinPending) return;
+    _joinPending = true;
+    discoverError = null;
+    _joinFromDiscovery = fromDiscovery;
+    joiningCode = fromDiscovery ? _normalized(displayCode) : null;
+    if (!fromDiscovery) joinError = null;
     joinLog = [];
     notifyListeners();
     final codeDisp = _displayOf(displayCode);
@@ -163,11 +176,19 @@ class AppState extends ChangeNotifier {
         JoinLine(LogKind.ok, langs.t('log.dial', {'peer': _peerWithPort(peer)})),
         JoinLine(LogKind.run, langs.t('log.tunnel')),
       ];
+      _joinPending = false;
       room = RoomState.joining;
       notifyListeners();
     } on IpcError catch (e) {
-      joinError = e.message;
-      joinLog = [...joinLog, JoinLine(LogKind.err, e.message)];
+      _joinPending = false;
+      _joinFromDiscovery = false;
+      joiningCode = null;
+      if (fromDiscovery) {
+        discoverError = e.message;
+      } else {
+        joinError = e.message;
+        joinLog = [...joinLog, JoinLine(LogKind.err, e.message)];
+      }
       room = RoomState.idle;
       notifyListeners();
     }
@@ -180,6 +201,7 @@ class AppState extends ChangeNotifier {
     } on IpcError catch (_) {
       // stop 幂等;失败也按已离开处理,界面回主页。
     }
+    discoverError = null;
     _setRoom(RoomState.idle);
     notifyListeners();
   }
@@ -205,8 +227,15 @@ class AppState extends ChangeNotifier {
         }
       case 'err':
         if (id.isNotEmpty && id == _lastJoinId) {
-          joinError = (msg['message'] as String?) ?? '加入失败';
-          joinLog = [...joinLog.where((l) => l.kind != LogKind.run), JoinLine(LogKind.err, joinError!)];
+          final message = (msg['message'] as String?) ?? '加入失败';
+          if (_joinFromDiscovery) {
+            discoverError = message;
+          } else {
+            joinError = message;
+            joinLog = [...joinLog.where((l) => l.kind != LogKind.run), JoinLine(LogKind.err, message)];
+          }
+          _joinFromDiscovery = false;
+          joiningCode = null;
           room = RoomState.idle;
           _lastJoinId = '';
         } else if (id.isNotEmpty && id == _lastHostId) {
@@ -226,6 +255,9 @@ class AppState extends ChangeNotifier {
           _applyRoomFields(msg);
           room = RoomState.joined;
           _lastJoinId = '';
+          _joinFromDiscovery = false;
+          joiningCode = null;
+          discoverError = null;
           joinLog = [
             ...joinLog.where((l) => l.kind != LogKind.run && l.kind != LogKind.err),
             JoinLine(LogKind.ok, langs.t('log.joined', {'ip': selfIp ?? '—'})),
@@ -234,6 +266,8 @@ class AppState extends ChangeNotifier {
           final message = (msg['message'] as String?) ?? '';
           _setRoom(RoomState.idle);
           if (message.isNotEmpty) joinError = message;
+        } else if (name == 'discovered') {
+          discovered = ((msg['rooms'] as List<dynamic>?) ?? []).cast<Map<String, dynamic>>();
         }
       case 'core-exit':
         bridgeReady = false;
@@ -265,6 +299,10 @@ class AppState extends ChangeNotifier {
       members = [];
       joinLog = [];
       joinError = null;
+      discovered = [];
+      joiningCode = null;
+      _joinFromDiscovery = false;
+      _joinPending = false;
       _lastJoinId = '';
       _lastHostId = '';
     }
@@ -283,6 +321,9 @@ class AppState extends ChangeNotifier {
     if (s.length <= 4) return s;
     return '${s.substring(0, 4)} ${s.substring(4)}';
   }
+
+  // 与核心信标里的房间码同形:去掉展示用空格。
+  String _normalized(String raw) => _displayOf(raw).replaceAll(' ', '');
 
   // 房主地址缺省端口时补默认端口。
   String _peerWithPort(String peer) {
@@ -320,6 +361,9 @@ class AppState extends ChangeNotifier {
   }
 
   bool get inRoom => room == RoomState.hosting || room == RoomState.joined;
+
+  // 某一间发现房是否正在加入:只让被点的那张卡显示进度。
+  bool isFoundJoining(String code) => room == RoomState.joining && joiningCode == code;
 
   // 沿树下发 AppState 的轻量 Provider 的取用口。
   static AppState of(BuildContext context) =>

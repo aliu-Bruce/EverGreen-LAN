@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"eglan/internal/crypto"
+	"eglan/internal/disc"
 	"eglan/internal/firewall"
 	"eglan/internal/ipc"
 	"eglan/internal/mesh"
@@ -139,7 +140,9 @@ func relay(role, code, name, ip, peer string, listen int, adapter string, mtu in
 			return err
 		}
 		defer dev.Close()
-		firewall.Open(listen)
+		if err := firewall.Open(listen); err != nil {
+			fmt.Println("提示:", err)
+		}
 		pc, err := mesh.Bind(listen)
 		if err != nil {
 			return fmt.Errorf("监听 UDP 端口 %d 失败: %w", listen, err)
@@ -155,6 +158,17 @@ func relay(role, code, name, ip, peer string, listen int, adapter string, mtu in
 			h.Close()
 		}()
 		h.Start()
+		// 与界面通道一致:房间开放即播报,同网段的界面可直接发现
+		if a, err := disc.Announce(disc.AnnounceConfig{
+			Name:    name,
+			Code:    code,
+			Port:    listen,
+			Members: func() int { return len(h.Members()) + 1 },
+		}); err != nil {
+			fmt.Println("提示: 局域网发现未启动:", err)
+		} else {
+			defer a.Close()
+		}
 		fmt.Printf("虚拟网卡 %s(%s)就绪\n", dev.Name(), cidr)
 		fmt.Printf("房间已开放,房间码:%s(把码告诉想加入的伙伴)\n", room.Display(code))
 		fmt.Printf("监听 UDP :%d;此窗口保持打开,Ctrl+C 退出\n", listen)
@@ -251,7 +265,7 @@ func pumpIn(from packetReceiver, dev tun.Device, done chan<- error) {
 
 // testEcho 在进程内走一遍三人房间网全链路:
 // 房间码握手与地址分配 → 成员间单播 → 广播洪水 → 交付主机本机 →
-// 错房间码拒绝 → 成员名册 → 防重放。
+// 错房间码拒绝 → 成员名册 → 防重放 → 发现信标收发与过滤。
 // 全程不建网卡,因此不需要管理员权限。
 func testEcho() error {
 	check := func(name string, cond bool) {
@@ -365,6 +379,48 @@ func testEcho() error {
 	_, replayed := s2.Open(f1)
 	check("重放旧帧被拒绝", replayed != nil)
 
+	// 发现:监听临时端口,单播一条信标应得到对应房间
+	found := make(chan []disc.Room, 8)
+	l, err := disc.Listen(0, func(rooms []disc.Room) {
+		select {
+		case found <- rooms:
+		default:
+		}
+	})
+	if err != nil {
+		return err
+	}
+	defer l.Close()
+	sock, err := net.ListenUDP("udp4", nil)
+	if err != nil {
+		return err
+	}
+	defer sock.Close()
+	to := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: l.Port()}
+	beacon, err := disc.Beacon{
+		Version: 1,
+		Name:    "自检房间",
+		Code:    "K7Q2M9XD",
+		Peer:    "127.0.0.1:47777",
+		Members: 2,
+	}.Marshal()
+	if err != nil {
+		return err
+	}
+	if _, err := sock.WriteToUDP(beacon, to); err != nil {
+		return err
+	}
+	rooms, gotBeacon := recvRooms(found, 3*time.Second)
+	check("发现信标:房间进入列表",
+		gotBeacon && len(rooms) == 1 && rooms[0].Code == "K7Q2M9XD" && rooms[0].Peer == "127.0.0.1:47777")
+
+	// 非本协议报文:监听端必须无视,不产生任何事件
+	if _, err := sock.WriteToUDP([]byte("EGLAN? not a beacon"), to); err != nil {
+		return err
+	}
+	_, noise := recvRooms(found, 500*time.Millisecond)
+	check("发现信标:非法报文被忽略", !noise)
+
 	host.Close()
 	fmt.Printf("全部通过(runtime %s)\n", runtime.Version())
 	return nil
@@ -397,6 +453,16 @@ func recvWithin(r packetReceiver, d time.Duration) ([]byte, bool) {
 	select {
 	case res := <-ch:
 		return res.pkt, res.err == nil
+	case <-time.After(d):
+		return nil, false
+	}
+}
+
+// recvRooms 在限时内收一份发现快照;超时返回假,测试不悬挂。
+func recvRooms(ch <-chan []disc.Room, d time.Duration) ([]disc.Room, bool) {
+	select {
+	case rooms := <-ch:
+		return rooms, true
 	case <-time.After(d):
 		return nil, false
 	}

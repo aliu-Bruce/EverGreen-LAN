@@ -8,7 +8,11 @@
 //	      {"op":"stop"} {"op":"status"} {"op":"members"}
 //	应答  {"type":"ok", …} / {"type":"err","message":"…"}
 //	事件  {"type":"event","name":"room-up|room-down", …}
+//	      {"type":"event","name":"discovered","rooms":[{"name","code","peer","members"}]}
 //	名册  {"type":"members","list":[{"name":"…","ip":"…","pub":"…"}]}
+//
+// 空闲时核心监听局域网发现端口,把同网段的房间推给界面;开房后改播报,
+// 离房后恢复监听。发现只负责列出房间,加入仍走 join。
 //
 // 每条请求可带 "id":核心在应答与该请求引发的错误、room-up 里原样带回,
 // 供界面把异步结果与请求关联;不带 id 则应答也不含 id。
@@ -29,6 +33,7 @@ import (
 	"time"
 
 	"eglan/internal/crypto"
+	"eglan/internal/disc"
 	"eglan/internal/firewall"
 	"eglan/internal/mesh"
 	"eglan/internal/room"
@@ -83,6 +88,8 @@ type Bridge struct {
 	host  *mesh.Host
 	guest *mesh.Guest
 	dev   tun.Device
+	disc  *disc.Listener  // 空闲时的发现监听
+	discA *disc.Announcer // 开房时的信标播报
 }
 
 // Run 从 in 逐行读请求、向 out 写应答,直到输入关闭;
@@ -92,6 +99,11 @@ func Run(in io.Reader, out io.Writer) error {
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
 	b.out = enc
+	// 发现端口也要能收:规则一次装好,失败不阻断(可能未提权或已手工放行)
+	go func() { _ = firewall.Open(disc.Port) }()
+	b.mu.Lock()
+	b.startDiscoveryLocked()
+	b.mu.Unlock()
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 0, 64*1024), 64*1024)
 	for sc.Scan() {
@@ -103,6 +115,7 @@ func Run(in io.Reader, out io.Writer) error {
 	}
 	b.mu.Lock()
 	b.teardownLocked()
+	b.stopDiscoveryLocked()
 	b.mu.Unlock()
 	return nil
 }
@@ -148,6 +161,35 @@ func (b *Bridge) errID(id, format string, args ...any) {
 		fields["id"] = id
 	}
 	b.send(fields)
+}
+
+// startDiscoveryLocked 在空闲态监听局域网信标;已有监听或非空闲则不动。
+// 发现是增强能力:端口被占用时静默降级,不影响房间功能。
+func (b *Bridge) startDiscoveryLocked() {
+	if b.state != "idle" || b.disc != nil {
+		return
+	}
+	l, err := disc.Listen(disc.Port, b.discovered)
+	if err != nil {
+		return
+	}
+	b.disc = l
+}
+
+// stopDiscoveryLocked 停止发现监听;须持 b.mu。
+func (b *Bridge) stopDiscoveryLocked() {
+	if b.disc != nil {
+		b.disc.Close()
+		b.disc = nil
+	}
+}
+
+// discovered 把最新房间快照推给界面;由监听协程调用。
+func (b *Bridge) discovered(rooms []disc.Room) {
+	if rooms == nil {
+		rooms = []disc.Room{}
+	}
+	b.send(map[string]any{"type": "event", "name": "discovered", "rooms": rooms})
 }
 
 // opStartHost 开房间:建卡(需管理员)→ 放行 → 监听 → 收泵。
@@ -203,7 +245,7 @@ func (b *Bridge) opStartHost(req request) {
 		b.errID(req.ID, "建虚拟网卡失败(需要管理员权限): %v", err)
 		return
 	}
-	firewall.Open(listen)
+	_ = firewall.Open(listen)
 	pc, err := mesh.Bind(listen)
 	if err != nil {
 		dev.Close()
@@ -218,6 +260,16 @@ func (b *Bridge) opStartHost(req request) {
 		return
 	}
 	h.Start()
+	// 房间已起:停发现监听,改由本机播报,避免自己发现自己
+	b.stopDiscoveryLocked()
+	if a, err := disc.Announce(disc.AnnounceConfig{
+		Name:    name,
+		Code:    code,
+		Port:    listen,
+		Members: func() int { return len(h.Members()) + 1 },
+	}); err == nil {
+		b.discA = a
+	}
 	b.host, b.dev, b.code, b.self, b.state = h, dev, code, cidr, "hosting"
 	go b.pumpOut(dev, h)
 	go b.pumpIn(dev, localSource{ch: h.LocalOut(), done: h.Done()})
@@ -255,6 +307,7 @@ func (b *Bridge) opJoin(req request) {
 	if mtu == 0 {
 		mtu = 1400
 	}
+	b.stopDiscoveryLocked()
 	b.state = "joining"
 	b.mu.Unlock()
 	b.send(map[string]any{"type": "ok", "id": req.ID, "state": "joining"})
@@ -302,6 +355,7 @@ func (b *Bridge) joinFailed(id string, err error) {
 	b.mu.Lock()
 	if b.state == "joining" {
 		b.state = "idle"
+		b.startDiscoveryLocked() // 入房未成,回到发现
 	}
 	b.mu.Unlock()
 	b.errID(id, "加入失败: %v", err)
@@ -311,6 +365,7 @@ func (b *Bridge) joinFailed(id string, err error) {
 func (b *Bridge) opStop(req request) {
 	b.mu.Lock()
 	b.teardownLocked()
+	b.startDiscoveryLocked()
 	b.mu.Unlock()
 	b.send(map[string]any{"type": "ok", "id": req.ID, "state": "idle"})
 }
@@ -358,12 +413,17 @@ func (b *Bridge) roomDown(message string) {
 		return
 	}
 	b.teardownLocked()
+	b.startDiscoveryLocked()
 	b.mu.Unlock()
 	b.send(map[string]any{"type": "event", "name": "room-down", "message": message})
 }
 
 // teardownLocked 关闭房间连接与网卡,状态回 idle;须持 b.mu。
 func (b *Bridge) teardownLocked() {
+	if b.discA != nil {
+		b.discA.Close()
+		b.discA = nil
+	}
 	if b.host != nil {
 		b.host.Close()
 		b.host = nil
