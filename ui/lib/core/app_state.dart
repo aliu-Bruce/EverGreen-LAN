@@ -26,6 +26,10 @@ class AppState extends ChangeNotifier {
   bool bridgeReady = false;
   String? bridgeProblem;
 
+  // 运行权限:核心报告的是否已提权、能否一键提权。
+  bool? admin;
+  bool canElevate = false;
+
   RoomState room = RoomState.idle;
   String? code;      // 房间码展示形态 XXXX XXXX
   String? selfIp;    // 本机虚拟地址
@@ -72,6 +76,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       });
       unawaited(bridge.request({'op': 'status'}, timeout: const Duration(seconds: 3)).catchError((_) => <String, dynamic>{}));
+      unawaited(bridge.request({'op': 'env'}, timeout: const Duration(seconds: 3)).catchError((_) => <String, dynamic>{}));
     } catch (e) {
       bridgeProblem = e.toString();
     }
@@ -124,6 +129,21 @@ class AppState extends ChangeNotifier {
     prefs.onboarded = true;
     unawaited(prefs.save());
     notifyListeners();
+  }
+
+  // 以管理员权限重启界面;成功返回 null,界面随后退出让新实例接管。
+  Future<String?> restartAsAdmin() async {
+    if (!bridgeReady) return '核心进程未运行';
+    try {
+      final ack = await bridge.request({
+        'op': 'restart-admin',
+        'exe': Platform.resolvedExecutable,
+      }, timeout: const Duration(seconds: 90));
+      if (ack['relaunched'] != true) return '当前已是管理员权限';
+      return null;
+    } on IpcError catch (e) {
+      return e.message;
+    }
   }
 
   // ---- 房间操作 ----
@@ -269,8 +289,13 @@ class AppState extends ChangeNotifier {
         } else if (name == 'discovered') {
           discovered = ((msg['rooms'] as List<dynamic>?) ?? []).cast<Map<String, dynamic>>();
         }
+      case 'env':
+        admin = msg['admin'] == true;
+        canElevate = msg['canElevate'] == true;
       case 'core-exit':
         bridgeReady = false;
+        admin = null;
+        canElevate = false;
         bridgeProblem = (msg['message'] as String?) ?? '核心进程已退出';
         _setRoom(RoomState.idle);
     }

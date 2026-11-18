@@ -99,7 +99,7 @@ ping 10.66.7.2        # 打到另一成员,经主机转发
 | `-code` | host 留空自动生成 | 房间码,加入凭证;client 必填 |
 | `-name` | Player-系统用户名 | 房间内显示名 |
 | `-ip` | 10.66.7.1/24 | 仅 host:本端隧道地址段;多房间并存时错开网段 |
-| `-listen` | 47777 | host 监听的 UDP 端口 |
+| `-listen` | 47777 | host 监听的房间 UDP 端口 |
 | `-peer` | 必填(client) | 主机地址 host:port |
 | `-adapter` | EGLAN | 虚拟网卡名;同机多实例用不同名 |
 | `-mtu` | 1400 | 隧道 MTU,勿超过路径 MTU |
@@ -142,6 +142,12 @@ ping 10.66.7.2        # 打到另一成员,经主机转发
 | `{"op":"join","code":"…","peer":"host:port"}` | 先 `ok state:"joining"`,完成后发事件 `room-up` |
 | `{"op":"stop"}` | `ok state:"idle"`;幂等 |
 | `{"op":"status"}` / `{"op":"members"}` | `status`(state/code/self)/ `members`(list) |
+| `{"op":"env"}` | `{"type":"env","admin":false,"canElevate":true}`:是否已提权、能否一键提权 |
+| `{"op":"restart-admin","exe":"C:\\…\\eglan_ui.exe"}` | 在支持的平台用系统提权弹窗重启界面;成功 `ok relaunched:true`,界面自行退出 |
+
+权限查询只读,不改动系统状态;`restart-admin` 只接受存在的绝对路径,
+用户取消 UAC 或系统拒绝时返回 `err`,界面保留原实例。已在管理员权限下调用时
+返回 `ok relaunched:false`。
 
 空闲时核心监听 UDP 47778,同网段有房间就推事件:
 

@@ -6,7 +6,9 @@
 //	请求  {"op":"start-host", "code":"…", "name":"…"}   开房间;code 留空自动生成
 //	      {"op":"join", "code":"…", "peer":"host:port"} 入房;先回执 joining,完成后发 room-up 事件
 //	      {"op":"stop"} {"op":"status"} {"op":"members"}
+//	      {"op":"env"} {"op":"restart-admin","exe":"…"}
 //	应答  {"type":"ok", …} / {"type":"err","message":"…"}
+//	      {"type":"env","admin":false,"canElevate":true}
 //	事件  {"type":"event","name":"room-up|room-down", …}
 //	      {"type":"event","name":"discovered","rooms":[{"name","code","peer","members"}]}
 //	名册  {"type":"members","list":[{"name":"…","ip":"…","pub":"…"}]}
@@ -27,13 +29,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"eglan/internal/crypto"
 	"eglan/internal/disc"
+	"eglan/internal/elevate"
 	"eglan/internal/firewall"
 	"eglan/internal/mesh"
 	"eglan/internal/room"
@@ -73,6 +78,7 @@ type request struct {
 	Adapter string `json:"adapter"`
 	MTU     int    `json:"mtu"`
 	CIDR    string `json:"cidr"`
+	Exe     string `json:"exe"`
 }
 
 // Bridge 持有房间状态机与全部连接;方法并发安全。
@@ -138,6 +144,10 @@ func (b *Bridge) dispatch(line string) {
 		b.opStatus(req)
 	case "members":
 		b.opMembers(req)
+	case "env":
+		b.opEnv(req)
+	case "restart-admin":
+		b.opRestartAdmin(req)
 	default:
 		b.errID(req.ID, "未知操作 %q", req.Op)
 	}
@@ -190,6 +200,47 @@ func (b *Bridge) discovered(rooms []disc.Room) {
 		rooms = []disc.Room{}
 	}
 	b.send(map[string]any{"type": "event", "name": "discovered", "rooms": rooms})
+}
+
+// opEnv 报告运行环境:是否已提权、能否一键提权。
+func (b *Bridge) opEnv(req request) {
+	b.send(map[string]any{
+		"type":       "env",
+		"id":         req.ID,
+		"admin":      elevate.Admin(),
+		"canElevate": elevate.Available(),
+	})
+}
+
+// opRestartAdmin 以管理员权限重新拉起界面程序;由界面在成功后自行退出。
+// 路径由界面随请求带来,只接受存在的绝对路径。
+func (b *Bridge) opRestartAdmin(req request) {
+	if !elevate.Available() {
+		b.errID(req.ID, "当前平台暂不支持一键提权")
+		return
+	}
+	if elevate.Admin() {
+		b.send(map[string]any{"type": "ok", "id": req.ID, "admin": true, "relaunched": false})
+		return
+	}
+	if req.Exe == "" || !filepath.IsAbs(req.Exe) {
+		b.errID(req.ID, "缺少界面程序的绝对路径")
+		return
+	}
+	info, err := os.Stat(req.Exe)
+	if err != nil {
+		b.errID(req.ID, "找不到界面程序: %s", req.Exe)
+		return
+	}
+	if !info.Mode().IsRegular() {
+		b.errID(req.ID, "界面程序路径不是文件: %s", req.Exe)
+		return
+	}
+	if err := elevate.Restart(req.Exe); err != nil {
+		b.errID(req.ID, "%v", err)
+		return
+	}
+	b.send(map[string]any{"type": "ok", "id": req.ID, "admin": false, "relaunched": true})
 }
 
 // opStartHost 开房间:建卡(需管理员)→ 放行 → 监听 → 收泵。

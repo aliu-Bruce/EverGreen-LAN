@@ -1,5 +1,7 @@
-// 设置页:外观(主题/导航)、身份(用户名)、网络(端口/MTU)、关于。
+// 设置页:外观(主题/导航)、身份(用户名)、权限、网络(端口/MTU)、关于。
 // 只放有真实后端支撑的项;STUN、自启、主题包随插件系统发布,暂不出现。
+import 'dart:io';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
@@ -22,6 +24,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final TextEditingController _port = TextEditingController();
   final TextEditingController _mtu = TextEditingController();
   bool _inited = false;
+  bool _restarting = false;
 
   @override
   void didChangeDependencies() {
@@ -52,6 +55,24 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     _port.text = '${app.prefs.port}';
     _mtu.text = '${app.prefs.mtu}';
+  }
+
+  // 提权由核心发起(Windows runas);成功后本实例退出,新实例接管。
+  Future<void> _restartAsAdmin(AppState app) async {
+    if (_restarting) return;
+    setState(() => _restarting = true);
+    final err = await app.restartAsAdmin();
+    if (!mounted) return;
+    if (err != null) {
+      setState(() => _restarting = false);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        content: Text(err),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ));
+      return;
+    }
+    exit(0);
   }
 
   @override
@@ -148,6 +169,28 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
         ),
+
+        // 运行权限:只有支持一键提权的平台显示;提权后开房与发现放行才完整。
+        if (app.canElevate)
+          EgPanel(
+            child: _Row(
+              last: true,
+              title: app.langs.t('set.perm'),
+              hint: app.admin == true
+                  ? app.langs.t('set.permAdminHint')
+                  : app.room == RoomState.idle
+                      ? app.langs.t('set.permUserHint')
+                      : app.langs.t('set.permBusyHint'),
+              ctl: app.admin == true
+                  ? EgTag(app.langs.t('set.permAdmin'), color: c.acc)
+                  : EgButton(
+                      label: _restarting ? app.langs.t('set.permRestarting') : app.langs.t('btn.restartAdmin'),
+                      kind: EgBtnKind.primary,
+                      small: true,
+                      onPressed: _restarting || app.room != RoomState.idle ? null : () => _restartAsAdmin(app),
+                    ),
+            ),
+          ),
 
         // 网络
         EgPanel(
