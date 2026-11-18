@@ -10,7 +10,9 @@ import '../widgets/fx.dart';
 
 class RoomPage extends StatefulWidget {
   final VoidCallback goHome;
-  const RoomPage({super.key, required this.goHome});
+  final VoidCallback onCreate;
+  final VoidCallback onJoin;
+  const RoomPage({super.key, required this.goHome, required this.onCreate, required this.onJoin});
 
   @override
   State<RoomPage> createState() => _RoomPageState();
@@ -19,6 +21,7 @@ class RoomPage extends StatefulWidget {
 class _RoomPageState extends State<RoomPage> {
   bool _guideOpen = false;
   bool _copied = false;
+  bool _hover = false;
 
   @override
   void initState() {
@@ -32,15 +35,62 @@ class _RoomPageState extends State<RoomPage> {
     final c = Eg.of(context).c;
 
     if (!app.inRoom) {
+      // 空态:页头与传输页同一语法(大标题 + 元信息),下面是一张温室虚线卡——
+      // 复用 .drop 的语言:像素温室、一句说明、创建与加入两个出口。
       return StaggerIn(
         children: [
-          Text(app.langs.t('room.h1'), style: egDisplay(c, size: 30, letterSpacing: -0.01, height: 1.2)),
-          const SizedBox(height: 2),
-          Text(app.langs.t('room.notInRoom'), style: egText(c, size: 13.5, color: c.muted)),
-          const SizedBox(height: 18),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: EgButton(label: app.langs.t('nav.home'), onPressed: widget.goHome),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(app.langs.t('room.h1'), style: egDisplay(c, size: 30, letterSpacing: -0.01, height: 1.2)),
+              const SizedBox(width: 14),
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(app.langs.t('room.notInRoom'), style: egText(c, size: 12.5, color: c.muted)),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 22),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.basic,
+              onEnter: (_) => setState(() => _hover = true),
+              onExit: (_) => setState(() => _hover = false),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
+                child: DashedBorder(
+                  color: _hover ? c.acc : c.line2,
+                  radius: 18,
+                  child: Container(
+                    color: _hover ? c.panel2 : null,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 44),
+                    child: Column(
+                      children: [
+                        PixelArt(rects: egRoomArt(c), cols: 20, rows: 15, scale: 7),
+                        const SizedBox(height: 16),
+                        Text(app.langs.t('room.emptyTitle'), style: egDisplay(c, size: 16)),
+                        const SizedBox(height: 8),
+                        Text(
+                          app.langs.t('room.emptyBody'),
+                          textAlign: TextAlign.center,
+                          style: egText(c, size: 12.5, color: c.faint, height: 1.6),
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            EgButton(label: app.langs.t('home.create'), kind: EgBtnKind.primary, onPressed: widget.onCreate),
+                            const SizedBox(width: 8),
+                            EgButton(label: app.langs.t('home.join'), onPressed: widget.onJoin),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       );

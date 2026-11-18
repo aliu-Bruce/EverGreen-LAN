@@ -131,5 +131,7 @@
   "log.joined": "参加しました。ローカルアドレス {ip}",
   "room.guestMeta": "{host} の部屋に参加中",
   "room.notInRoom": "部屋に参加していません",
+  "room.emptyTitle": "まだ部屋がありません",
+  "room.emptyBody": "部屋を作ってコードを友だちに送るか、受け取ったコードで参加できます。",
   "err.bridgeMissing": "コアの egland.exe が見つかりません。UI と同じフォルダか、リポジトリの dist に置いてください"
 }

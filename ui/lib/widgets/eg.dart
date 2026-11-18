@@ -198,8 +198,10 @@ class _EgDropdownState<T> extends State<EgDropdown<T>> with SingleTickerProvider
         final curve = CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic);
         return Stack(
           children: [
-            TapRegion(
-              onTapOutside: (_) => _close(),
+            // 全屏屏障:点菜单外任意处收起;菜单叠在其上,选项点击不受影响。
+            GestureDetector(
+              onTap: _close,
+              behavior: HitTestBehavior.opaque,
               child: const SizedBox.expand(),
             ),
             CompositedTransformFollower(

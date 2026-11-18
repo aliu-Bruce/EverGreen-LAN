@@ -151,6 +151,8 @@ class _ShellState extends State<Shell> {
                           padding: const EdgeInsets.fromLTRB(42, 36, 42, 60),
                           child: Center(
                             widthFactor: 1,
+                            // 高度也随内容:页面顶对齐,短内容不再飘在页面中部。
+                            heightFactor: 1,
                             child: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 880),
                               child: _PageSwitcher(
@@ -209,7 +211,7 @@ class _PageSwitcher extends StatelessWidget {
           },
         ),
       ShellPage.join => JoinPage(key: const ValueKey('join'), goHome: goHome),
-      ShellPage.room => RoomPage(key: const ValueKey('room'), goHome: goHome),
+      ShellPage.room => RoomPage(key: const ValueKey('room'), goHome: goHome, onCreate: onCreate, onJoin: onJoin),
       ShellPage.transfer => const TransferPage(),
       ShellPage.settings => const SettingsPage(),
     };
@@ -413,8 +415,8 @@ class _RailState extends State<Rail> with SingleTickerProviderStateMixin {
                       pulse: app.room != RoomState.idle,
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      switch (app.room) {
+                    ScrambleText(
+                      text: switch (app.room) {
                         RoomState.idle => t('status.idle'),
                         RoomState.joining => t('status.joining'),
                         RoomState.hosting || RoomState.joined => t('status.tun'),
@@ -425,8 +427,8 @@ class _RailState extends State<Rail> with SingleTickerProviderStateMixin {
                 ),
                 if (app.inRoom) ...[
                   const SizedBox(height: 5),
-                  Text(
-                    '${app.selfIp ?? '—'} · MTU ${app.prefs.mtu}',
+                  ScrambleText(
+                    text: '${app.selfIp ?? '—'} · MTU ${app.prefs.mtu}',
                     style: egMono(c, size: 11, color: c.faint),
                   ),
                 ],
@@ -705,8 +707,8 @@ class _TopBarState extends State<TopBar> with SingleTickerProviderStateMixin {
               children: [
                 EgLed(color: c.acc, pulse: true),
                 const SizedBox(width: 8),
-                Text(
-                  app.langs.t('status.connected', {'room': app.hostName ?? ''}),
+                ScrambleText(
+                  text: app.langs.t('status.connected', {'room': app.hostName ?? ''}),
                   style: egMono(c, size: 12, color: c.muted),
                 ),
               ],

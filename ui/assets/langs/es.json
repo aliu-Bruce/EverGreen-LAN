@@ -131,5 +131,7 @@
   "log.joined": "Te uniste. Dirección local {ip}",
   "room.guestMeta": "En la sala de {host}",
   "room.notInRoom": "No estás en una sala",
+  "room.emptyTitle": "Aún no hay salas",
+  "room.emptyBody": "Crea una sala y envía el código a tus amigos, o únete con un código que hayas recibido.",
   "err.bridgeMissing": "No se encontró egland.exe. Colócalo junto a la interfaz o en la carpeta dist del repositorio"
 }

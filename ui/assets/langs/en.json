@@ -131,5 +131,7 @@
   "log.joined": "Joined. Local address {ip}",
   "room.guestMeta": "Joined {host}'s room",
   "room.notInRoom": "You are not in a room",
+  "room.emptyTitle": "No rooms yet",
+  "room.emptyBody": "Create a room and send the code to friends, or join with a code you received.",
   "err.bridgeMissing": "Core binary egland.exe not found. Put it next to the UI, or in the repo's dist folder"
 }

@@ -60,6 +60,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final c = Eg.of(context).c;
 
     return StaggerIn(
+      spacing: 16,
       children: [
         Text(app.langs.t('set.title'), style: egDisplay(c, size: 30, letterSpacing: -0.01, height: 1.2)),
 

@@ -131,5 +131,7 @@
   "log.joined": "已加入房间,本机地址 {ip}",
   "room.guestMeta": "已加入 {host} 的房间",
   "room.notInRoom": "当前不在房间中",
+  "room.emptyTitle": "还没有房间",
+  "room.emptyBody": "创建一个房间,把房间码发给朋友;或输入朋友给的码加入。",
   "err.bridgeMissing": "未找到核心程序 egland.exe。请把它放在界面程序同一目录,或仓库的 dist 目录下"
 }
