@@ -116,7 +116,7 @@
   "set.lang": "Idioma",
   "set.langHint": "Idioma de la interfaz",
   "set.stun": "Servidor STUN",
-  "set.stunHint": "Solo se contacta al pulsar Comprobar; los datos de juego nunca pasan por él",
+  "set.stunHint": "Solo se contacta al comprobar manualmente; los datos de juego nunca pasan por él",
   "set.stunTest": "Probar conexión",
   "set.stunTesting": "Probando…",
   "set.stunReset": "Restablecer",

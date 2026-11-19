@@ -116,7 +116,7 @@
   "set.lang": "Language",
   "set.langHint": "Interface display language",
   "set.stun": "STUN server",
-  "set.stunHint": "Contacted only when you press Probe; game data never passes through it",
+  "set.stunHint": "Contacted only for a manual check; game data never passes through it",
   "set.stunTest": "Test connection",
   "set.stunTesting": "Testing…",
   "set.stunReset": "Reset",

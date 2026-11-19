@@ -116,7 +116,7 @@
   "set.lang": "言語",
   "set.langHint": "表示言語",
   "set.stun": "STUN サーバー",
-  "set.stunHint": "「公開アドレスを確認」を押したときだけ一度アクセスします。ゲームデータは通過しません",
+  "set.stunHint": "手動で確認したときだけアクセスします。ゲームデータは通過しません",
   "set.stunTest": "接続をテスト",
   "set.stunTesting": "テスト中…",
   "set.stunReset": "リセット",

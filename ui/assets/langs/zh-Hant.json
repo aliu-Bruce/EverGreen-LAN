@@ -116,7 +116,7 @@
   "set.lang": "語言",
   "set.langHint": "介面顯示語言",
   "set.stun": "STUN 伺服器",
-  "set.stunHint": "僅在你按下偵測時存取一次,遊戲資料不經過它",
+  "set.stunHint": "僅在你手動偵測或測試時存取一次,遊戲資料不經過它",
   "set.stunTest": "測試連線",
   "set.stunTesting": "測試中…",
   "set.stunReset": "重設",
