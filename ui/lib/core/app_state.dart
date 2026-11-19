@@ -192,6 +192,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 设置页试连:用独立套接字探测一次,不影响房间状态,也不改动偏好。
+  // 成功返回规范化后的服务器与公网映射地址;失败抛出 IpcError。
+  Future<({String server, String addr})> testStun(String server) async {
+    if (!bridgeReady) throw IpcError(langs.t('err.coreNotRunning'));
+    final ack = await bridge.request({
+      'op': 'test-stun',
+      'server': server,
+    }, timeout: const Duration(seconds: 12));
+    final ip = (ack['ip'] as String?)?.trim() ?? '';
+    final port = (ack['port'] as num?)?.toInt() ?? 0;
+    final normalized = (ack['server'] as String?)?.trim() ?? server.trim();
+    if (ip.isEmpty || port <= 0) throw IpcError(langs.t('err.stunReply'));
+    return (server: normalized, addr: '$ip:$port');
+  }
+
   // 从房间套接字探测 NAT 映射;只有开房后核心才有可探测的套接字。
   Future<void> probePublic() async {
     if (room != RoomState.hosting || stunRunning) return;

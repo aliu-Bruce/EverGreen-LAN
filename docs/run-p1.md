@@ -63,8 +63,8 @@ UDP 映射地址,把它写进 `eglan://join/…` 邀请;朋友粘贴邀请即填
   端口不同,把「该外部端口」转发到「房间端口」即可,邀请里已带上实际端口。
 - **对称 NAT / CGNAT**:映射每次不同或出口不可控时,公网直连不可用,界面会
   提示退回局域网方式。
-- **隐私**:STUN 服务器只在用户点「探测公网」那一刻被访问一次,默认
-  `stun.l.google.com:19302`,可在设置里更换;除同房成员与该次探测外,
+- **隐私**:STUN 服务器只在用户点「探测公网」或设置页「测试连接」那一刻被访问一次,默认
+  `stun.cloudflare.com:3478`,可在设置里更换并在试连成功后保存;除同房成员与该次探测外,
   核心不产生任何其他外联。
 
 ## 5. 多机联机实测
@@ -176,6 +176,7 @@ ping 10.66.7.2        # 打到另一成员,经主机转发
 | `{"op":"stop"}` | `ok state:"idle"`;幂等 |
 | `{"op":"status"}` / `{"op":"members"}` | `status`(state/code/self)/ `members`(list) |
 | `{"op":"stun","server":"stun.example:3478"}` | 从房间套接字探测公网映射;`ok` 带 `ip`/`port`,仅 hosting 时可用,约 4 秒超时 |
+| `{"op":"test-stun","server":"stun.example:3478"}` | 用独立套接字试连 STUN 服务器;`ok` 带规范化后的 `server` 与 `ip`/`port`,未开房也可用,约 5 秒超时 |
 | `{"op":"env"}` | `{"type":"env","admin":false,"canElevate":true}`:是否已提权、能否一键提权 |
 | `{"op":"elevate-core","addr":"127.0.0.1:port","token":"…"}` | 用系统提权弹窗拉起新的核心,新核心连回界面提供的回环端口;成功 `ok relaunched:true`,旧核心随即退出。仅空闲时可用 |
 | `{"op":"send-file","to":"10.66.7.2","path":"…"}` | 向房间成员发文件;`ok` 带传输编号 `transfer`。主机可指定任一成员,成员省略 `to` 即发主机 |

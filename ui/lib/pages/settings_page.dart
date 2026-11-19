@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_state.dart';
+import '../core/ipc.dart';
 import '../core/prefs.dart';
 import '../i18n.dart';
 import '../theme.dart';
@@ -24,6 +25,9 @@ class _SettingsPageState extends State<SettingsPage> {
   final TextEditingController _stun = TextEditingController();
   bool _inited = false;
   bool _restarting = false;
+  bool _stunTesting = false;
+  String? _stunError;
+  String? _stunResult;
 
   @override
   void didChangeDependencies() {
@@ -58,13 +62,44 @@ class _SettingsPageState extends State<SettingsPage> {
     _mtu.text = '${app.prefs.mtu}';
   }
 
-  // 留空表示仍用默认服务器;提交时把规范化后的值回填到输入框。
-  void _commitStun(AppState app) {
-    app.setStun(_stun.text);
-    _stun.text = app.prefs.stun.isEmpty ? Prefs.defaultStun : app.prefs.stun;
-    if (_stun.text != app.prefs.stun) {
-      app.setStun(_stun.text);
+  // 只有试连成功才写入偏好;失败时输入框内容保留,但不会保存。
+  Future<void> _testStun(AppState app) async {
+    if (_stunTesting) return;
+    final raw = _stun.text.trim();
+    final candidate = raw.isEmpty ? Prefs.defaultStun : raw;
+    setState(() {
+      _stunTesting = true;
+      _stunError = null;
+      _stunResult = null;
+    });
+    try {
+      final result = await app.testStun(candidate);
+      if (!mounted) return;
+      app.setStun(result.server);
+      setState(() {
+        _stun.text = result.server;
+        _stunResult = app.langs.t('set.stunResult', {'addr': result.addr});
+      });
+    } on IpcError catch (e) {
+      if (!mounted) return;
+      setState(() => _stunError = '${app.langs.t('set.stunFail')}${e.message}');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _stunError = '${app.langs.t('set.stunFail')}$e');
+    } finally {
+      if (mounted) setState(() => _stunTesting = false);
     }
+  }
+
+  // 重置直接回到内置默认值;默认值本身可信,不需要再试连。
+  void _resetStun(AppState app) {
+    if (_stunTesting) return;
+    setState(() {
+      _stun.text = Prefs.defaultStun;
+      _stunError = null;
+      _stunResult = app.langs.t('set.stunRestored');
+    });
+    app.setStun(Prefs.defaultStun);
   }
 
   // 提权只换后台核心:成功后本界面继续运行,不需要退出。
@@ -227,18 +262,72 @@ class _SettingsPageState extends State<SettingsPage> {
                   onSubmitted: (_) => _commitNet(app),
                 ),
               ),
-              _Row(
-                last: true,
-                title: app.langs.t('set.stun'),
-                hint: app.langs.t('set.stunHint'),
-                ctl: EgInput(
-                  controller: _stun,
-                  width: 220,
-                  mono: true,
-                  hint: Prefs.defaultStun,
-                  maxLength: 128,
-                  onChanged: app.setStun,
-                  onSubmitted: (_) => _commitStun(app),
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(app.langs.t('set.stun'), style: egText(c, size: 13, weight: FontWeight.w600, height: 1.5)),
+                              Text(app.langs.t('set.stunHint'), style: egText(c, size: 11.5, color: c.muted, height: 1.4)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        EgInput(
+                          controller: _stun,
+                          width: 240,
+                          mono: true,
+                          hint: Prefs.defaultStun,
+                          maxLength: 128,
+                          onChanged: (_) {
+                            if (_stunError != null || _stunResult != null) {
+                              setState(() {
+                                _stunError = null;
+                                _stunResult = null;
+                              });
+                            }
+                          },
+                          onSubmitted: (_) => _testStun(app),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      app.langs.t('set.stunNote'),
+                      style: egText(c, size: 11.5, color: c.muted, height: 1.55),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _stunError != null
+                              ? Text(_stunError!, style: egText(c, size: 11.5, color: c.bad, height: 1.45))
+                              : _stunResult != null
+                                  ? Text(_stunResult!, style: egText(c, size: 11.5, color: c.acc, height: 1.45))
+                                  : const SizedBox.shrink(),
+                        ),
+                        const SizedBox(width: 12),
+                        EgButton(
+                          label: app.langs.t('set.stunReset'),
+                          small: true,
+                          onPressed: _stunTesting ? null : () => _resetStun(app),
+                        ),
+                        const SizedBox(width: 8),
+                        EgButton(
+                          label: _stunTesting ? app.langs.t('set.stunTesting') : app.langs.t('set.stunTest'),
+                          kind: EgBtnKind.primary,
+                          small: true,
+                          onPressed: _stunTesting ? null : () => _testStun(app),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -286,15 +375,17 @@ class _Row extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: egText(c, size: 13, weight: FontWeight.w600, height: 1.5)),
-              if (hint != null)
-                Text(hint!, style: egText(c, size: 11.5, color: c.muted, height: 1.4)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: egText(c, size: 13, weight: FontWeight.w600, height: 1.5)),
+                if (hint != null)
+                  Text(hint!, style: egText(c, size: 11.5, color: c.muted, height: 1.4)),
+              ],
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 16),
           ctl,
         ],
       ),

@@ -9,10 +9,86 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 )
 
 // DefaultServer 是界面与核心共用的默认 STUN 服务器。
-const DefaultServer = "stun.l.google.com:19302"
+const DefaultServer = "stun.cloudflare.com:3478"
+
+// NormalizeServer 去掉首尾空白,省略端口时补 STUN 默认端口 3478。
+// 只做字符串规范化,不做 DNS 解析;解析失败留给实际探测报告。
+func NormalizeServer(server string) (string, error) {
+	s := strings.TrimSpace(server)
+	if s == "" {
+		s = DefaultServer
+	}
+	if len(s) > 255 {
+		return "", fmt.Errorf("stun: 服务器地址过长")
+	}
+	if _, _, err := net.SplitHostPort(s); err != nil {
+		s = net.JoinHostPort(s, "3478")
+	}
+	host, port, err := net.SplitHostPort(s)
+	if err != nil || host == "" || port == "" {
+		return "", fmt.Errorf("stun: 服务器地址无效 %q", server)
+	}
+	return net.JoinHostPort(host, port), nil
+}
+
+// ResolveServer 把服务器地址解析成 IPv4 UDP 地址;只支持 udp4。
+func ResolveServer(server string) (*net.UDPAddr, error) {
+	normalized, err := NormalizeServer(server)
+	if err != nil {
+		return nil, err
+	}
+	raddr, err := net.ResolveUDPAddr("udp4", normalized)
+	if err != nil {
+		return nil, fmt.Errorf("stun: 无法解析服务器 %q: %w", normalized, err)
+	}
+	return raddr, nil
+}
+
+// Probe 用独立的 UDP 套接字单独探测一次 STUN 服务器,不需要房间。
+// 设置页的“测试连接”走这里;成功返回公网映射地址。
+func Probe(server string, timeout time.Duration) (*net.UDPAddr, error) {
+	raddr, err := ResolveServer(server)
+	if err != nil {
+		return nil, err
+	}
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	conn, err := net.DialUDP("udp4", nil, raddr)
+	if err != nil {
+		return nil, fmt.Errorf("stun: 建立探测连接失败: %w", err)
+	}
+	defer conn.Close()
+	tx, err := NewTransactionID()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := conn.Write(BuildBindingRequest(tx)); err != nil {
+		return nil, fmt.Errorf("stun: 发送探测请求失败: %w", err)
+	}
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return nil, fmt.Errorf("stun: 设置超时失败: %w", err)
+	}
+	buf := make([]byte, 2048)
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				return nil, fmt.Errorf("stun: 等待 %s 响应超时", raddr)
+			}
+			return nil, fmt.Errorf("stun: 接收探测响应失败: %w", err)
+		}
+		got, ok := TransactionIDOf(buf[:n])
+		if !ok || got != tx {
+			continue // 迟到的旧响应或其他报文,继续等本次事务
+		}
+		return ParseSuccess(buf[:n])
+	}
+}
 
 const (
 	headerLen = 20

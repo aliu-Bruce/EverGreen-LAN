@@ -9,6 +9,7 @@
 //	      {"op":"join", "code":"…", "peer":"host:port"} 入房;先回执 joining,完成后发 room-up 事件
 //	      {"op":"stop"} {"op":"status"} {"op":"members"}
 //	      {"op":"stun","server":"stun.example:3478"} 从房间套接字探测公网映射
+//	      {"op":"test-stun","server":"stun.example:3478"} 用独立套接字试连,不进入房间
 //	      {"op":"env"} {"op":"elevate-core","addr":"127.0.0.1:port","token":"…"}
 //	      {"op":"send-file","to":"10.66.7.2","path":"…"} 向成员发文件
 //	      {"op":"accept-file","transfer":"t1","path":"…"} 接受并指定保存路径
@@ -58,6 +59,7 @@ import (
 	"eglan/internal/firewall"
 	"eglan/internal/mesh"
 	"eglan/internal/room"
+	"eglan/internal/stun"
 	"eglan/internal/transfer"
 	"eglan/internal/tun"
 )
@@ -217,6 +219,8 @@ func (b *Bridge) dispatch(line string) {
 		b.opMembers(req)
 	case "stun":
 		b.opStun(req)
+	case "test-stun":
+		b.opTestStun(req)
 	case "env":
 		b.opEnv(req)
 	case "elevate-core":
@@ -724,6 +728,28 @@ func (b *Bridge) opStun(req request) {
 		return
 	}
 	b.send(map[string]any{"type": "ok", "id": req.ID, "ip": addr.IP.String(), "port": addr.Port})
+}
+
+// opTestStun 用独立套接字试连 STUN 服务器,供设置页在保存前验证。
+// 不需要房间,也不需要管理员权限;失败不改动任何设置。
+func (b *Bridge) opTestStun(req request) {
+	server, err := stun.NormalizeServer(req.Server)
+	if err != nil {
+		b.errID(req.ID, "%v", err)
+		return
+	}
+	addr, err := stun.Probe(server, 5*time.Second)
+	if err != nil {
+		b.errID(req.ID, "测试 STUN 服务器失败: %v", err)
+		return
+	}
+	b.send(map[string]any{
+		"type":   "ok",
+		"id":     req.ID,
+		"server": server,
+		"ip":     addr.IP.String(),
+		"port":   addr.Port,
+	})
 }
 
 // roomDown 房间因内部错误终止:打扫并广播事件;stop 已打扫时静默。

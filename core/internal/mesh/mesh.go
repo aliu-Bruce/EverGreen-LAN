@@ -526,24 +526,9 @@ func (h *Host) handleSTUN(from *net.UDPAddr, frame []byte) bool {
 	return true
 }
 
-// resolveSTUNServer 只解析 IPv4 服务器地址;省略端口时补 STUN 默认端口 3478。
+// resolveSTUNServer 交给 stun 包统一处理默认端口与解析规则。
 func resolveSTUNServer(server string) (*net.UDPAddr, error) {
-	server = strings.TrimSpace(server)
-	if server == "" {
-		server = stun.DefaultServer
-	}
-	host, port, err := net.SplitHostPort(server)
-	if err != nil {
-		host, port = server, "3478"
-	}
-	if host == "" || port == "" {
-		return nil, fmt.Errorf("stun: 服务器地址无效 %q", server)
-	}
-	raddr, err := net.ResolveUDPAddr("udp4", net.JoinHostPort(host, port))
-	if err != nil {
-		return nil, fmt.Errorf("stun: 无法解析服务器 %q: %w", server, err)
-	}
-	return raddr, nil
+	return stun.ResolveServer(server)
 }
 
 // handshake 登记 or 刷新成员:老成员按公钥认出,换地址换会话,保留隧道地址。

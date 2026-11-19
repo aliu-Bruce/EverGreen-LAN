@@ -803,25 +803,21 @@ input.inp{width:86px;text-align:center;font-family:var(--font-mono)}
         <div class="grp">
           <div class="row">
             <div class="lbl"><b>STUN 服务器</b><small>仅用于探测公网映射,数据流量不经过它</small></div>
-            <div class="ctl"><button class="btn ghost sm">添加</button></div>
+            <div class="ctl"><input class="inp" value="stun.cloudflare.com:3478"></div>
           </div>
           <div class="row">
-            <div class="lbl mono" style="font-size:12px">stun.cloudflare.com:3478</div>
-            <div class="ctl"><button class="btn ghost sm">移除</button></div>
-          </div>
-          <div class="row">
-            <div class="lbl mono" style="font-size:12px">stun.l.google.com:19302</div>
-            <div class="ctl"><button class="btn ghost sm">移除</button></div>
+            <div class="lbl" style="max-width:620px"><small>自定义服务器仅能获取您的公网地址，无法读取通信内容。请仅使用您信任的服务器，配置错误可能导致连接变慢。</small></div>
+            <div class="ctl"><button class="btn ghost sm">重置</button> <button class="btn primary sm">测试连接</button></div>
           </div>
         </div>
 
         <div class="grp">
           <div class="row">
-            <div class="lbl"><b>隧道端口</b><small>本机监听的 UDP 端口</small></div>
-            <div class="ctl"><input class="inp" value="46900"></div>
+            <div class="lbl"><b>隧道端口</b><small>联机通信使用的 UDP 端口。如遇冲突可修改，默认 47777。</small></div>
+            <div class="ctl"><input class="inp" value="47777"></div>
           </div>
           <div class="row">
-            <div class="lbl"><b>MTU</b><small>虚拟网卡最大传输单元</small></div>
+            <div class="lbl"><b>MTU</b><small>虚拟网卡最大传输单元，默认 1400。如遇某些游戏连接异常可尝试修改（如 1500 或 1200）。</small></div>
             <div class="ctl"><input class="inp" value="1400"></div>
           </div>
         </div>

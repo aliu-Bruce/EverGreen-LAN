@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 )
 
 // RFC 5769 2.2 的 IPv4 响应:SOFTWARE + XOR-MAPPED-ADDRESS + 完整性与指纹。
@@ -135,5 +136,61 @@ func TestRejectNoise(t *testing.T) {
 		if IsMessage(pkt) {
 			t.Fatalf("噪声报文被误判为 STUN: %x", pkt)
 		}
+	}
+}
+
+func TestNormalizeServer(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", DefaultServer},
+		{"  stun.cloudflare.com:3478  ", "stun.cloudflare.com:3478"},
+		{"stun.example.com", "stun.example.com:3478"},
+		{"1.1.1.1:3478", "1.1.1.1:3478"},
+	}
+	for _, c := range cases {
+		got, err := NormalizeServer(c.in)
+		if err != nil {
+			t.Fatalf("NormalizeServer(%q) 失败: %v", c.in, err)
+		}
+		if got != c.want {
+			t.Fatalf("NormalizeServer(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+	for _, bad := range []string{":3478", "stun.example.com:"} {
+		if _, err := NormalizeServer(bad); err == nil {
+			t.Fatalf("NormalizeServer(%q) 应报错", bad)
+		}
+	}
+}
+
+func TestProbe(t *testing.T) {
+	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	if err != nil {
+		t.Skipf("本机无法监听回环 UDP: %v", err)
+	}
+	defer srv.Close()
+	observed := make(chan *net.UDPAddr, 1)
+	go func() {
+		buf := make([]byte, 2048)
+		n, from, err := srv.ReadFromUDP(buf)
+		if err != nil {
+			return
+		}
+		tx, ok := TransactionIDOf(buf[:n])
+		if !ok {
+			return
+		}
+		observed <- from
+		_, _ = srv.WriteToUDP(BuildBindingSuccess(tx, from), from)
+	}()
+	got, err := Probe(srv.LocalAddr().String(), 2*time.Second)
+	if err != nil {
+		t.Fatalf("Probe 失败: %v", err)
+	}
+	want := <-observed
+	if !got.IP.Equal(want.IP) || got.Port != want.Port {
+		t.Fatalf("探测地址 = %s, want %s", got, want)
 	}
 }

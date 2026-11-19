@@ -6,7 +6,9 @@ enum EgThemeMode { light, dark, system }
 enum EgNavMode { side, top }
 
 class Prefs {
-  static const defaultStun = 'stun.l.google.com:19302';
+  static const defaultStun = 'stun.cloudflare.com:3478';
+  // 旧版本的默认值;升级时只有仍在使用它的用户会被迁移到新默认。
+  static const legacyStun = 'stun.l.google.com:19302';
 
   EgThemeMode themeMode = EgThemeMode.dark;
   EgNavMode navMode = EgNavMode.side;
@@ -42,7 +44,8 @@ class Prefs {
       name = (obj['name'] as String?) ?? '';
       port = (obj['port'] as num?)?.toInt() ?? 47777;
       mtu = (obj['mtu'] as num?)?.toInt() ?? 1400;
-      stun = (obj['stun'] as String?) ?? defaultStun;
+      final savedStun = (obj['stun'] as String?)?.trim() ?? '';
+      stun = savedStun.isEmpty || savedStun == legacyStun ? defaultStun : savedStun;
       onboarded = obj['onboarded'] == true;
     } catch (_) {}
   }

@@ -18,7 +18,7 @@ EGLAN 在两台机器之间架起一条**端到端加密的虚拟局域网**:建
 - **加密**:X25519 握手 → HKDF-SHA256(房间码为盐)→ AES-GCM;计数器 nonce,接收序号只增不减抗重放
 - **虚拟网卡**:Windows(wintun.dll)/ Linux(/dev/net/tun)已接;macOS(utun)待真机接入
 - **自检**:`-test-echo` 进程内完成三人房间网全链路(分配、单播、广播、错码拒绝、防重放)、STUN 探测、发现信标、可靠流往返与文件传输(SHA-256 校验),不需要管理员
-- **界面通道**:`-ipc` 以 stdin/stdout JSON 行协议驱动核心(start-host / join / stop / status / members / stun / env / elevate-core / send-file / accept-file / reject-file / pick-file / pick-save 与 discovered、file-offer、file-progress、file-done 事件);需要管理员时只提权核心,新核心经回环 TCP 连回界面,`eglan_ui.exe` 始终保持普通权限
+- **界面通道**:`-ipc` 以 stdin/stdout JSON 行协议驱动核心(start-host / join / stop / status / members / stun / test-stun / env / elevate-core / send-file / accept-file / reject-file / pick-file / pick-save 与 discovered、file-offer、file-progress、file-done 事件);需要管理员时只提权核心,新核心经回环 TCP 连回界面,`eglan_ui.exe` 始终保持普通权限
 - 占位骨架:`internal/plugin`(P4 插件宿主)
 
 运行与多机联机实测见 **[docs/run-p1.md](docs/run-p1.md)**。
