@@ -39,7 +39,7 @@
 
 ## 2.5 多语言与默认用户名
 
-- 语言包:`assets/langs/{zh-Hans,zh-Hant,en,ja,ko,ru,es}.json`,扁平点分键(如 `room.shareHint`),`$meta.name` 为该语言自称名;7 份文件键集必须一致(当前各 122 键)。
+- 语言包:界面实际加载 `ui/assets/langs/{zh-Hans,zh-Hant,en,ja,ko,ru,es}.json`;根目录 `assets/langs/` 是供 HTML 原型使用的同名副本,由 `ui/test/langs_test.dart` 保证同步。扁平点分键(如 `room.shareHint`),`$meta.name` 为该语言自称名;7 份文件键集必须一致(当前各 178 键)。
 - 占位符:`{x}` 形式(如 `{room}` `{n}` `{code}` `{ms}`),由渲染层在填充时替换;数字与演示数据不属于语言包。
 - 语言下拉:选项以语言自称名显示(简体中文/繁體中文/English/日本語/한국어/Русский/Español),选择即时生效并同步 `<html lang>`;无网络请求依赖,原型经相对路径读取语言包。
 - 默认用户名:`Player-` + 系统用户名清洗结果——仅保留字母数字与 `_.-`,清洗后为空则回退 `Player`,总长 ≤ 24 字符;仅为本地默认值,设置中可改,修改即时反映到侧栏身份与成员表。
