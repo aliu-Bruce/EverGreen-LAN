@@ -15,6 +15,7 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -27,6 +28,7 @@ import (
 	"eglan/internal/ipc"
 	"eglan/internal/mesh"
 	"eglan/internal/room"
+	"eglan/internal/stream"
 	"eglan/internal/stun"
 	"eglan/internal/tun"
 )
@@ -450,6 +452,117 @@ func testEcho() error {
 	_, noise := recvRooms(found, 500*time.Millisecond)
 	check("发现信标:非法报文被忽略", !noise)
 
+	// ---- 可靠流:主机与成员之间双向字节流 ----
+	// 成员通道上流帧与 IP 包共用一条加密链路,Recv 负责把流帧分派给流层。
+	// 这里先起收包泵,让成员的流层能收到建流帧与数据帧。
+	pump := make(chan struct{})
+	defer close(pump)
+	for _, g := range []*mesh.Guest{g1, g2} {
+		g := g
+		go func() {
+			for {
+				select {
+				case <-pump:
+					return
+				default:
+				}
+				if _, err := g.Recv(); err != nil {
+					return
+				}
+			}
+		}()
+	}
+
+	// 甲做回显:读多少写回多少,验证同一流上两个方向互不干扰。
+	echoRes := make(chan error, 1)
+	go func() {
+		st, err := g1.Flow().Accept()
+		if err != nil {
+			echoRes <- err
+			return
+		}
+		defer st.Close()
+		buf := make([]byte, 32*1024)
+		for {
+			n, rerr := st.Read(buf)
+			if n > 0 {
+				if _, werr := st.Write(buf[:n]); werr != nil {
+					echoRes <- werr
+					return
+				}
+			}
+			if rerr != nil {
+				if rerr == io.EOF {
+					echoRes <- nil
+				} else {
+					echoRes <- rerr
+				}
+				return
+			}
+		}
+	}()
+
+	hs, err := host.Flow().Dial(ip1)
+	if err != nil {
+		return err
+	}
+	wantEcho := make([]byte, 1<<20)
+	for i := range wantEcho {
+		wantEcho[i] = byte(i*31 + 7)
+	}
+	if _, err := hs.Write(wantEcho); err != nil {
+		return err
+	}
+	gotEcho := make([]byte, len(wantEcho))
+	if err := readStreamExact(hs, gotEcho); err != nil {
+		return err
+	}
+	if err := hs.Close(); err != nil {
+		return err
+	}
+	check("可靠流:1MB 主机 → 成员甲 → 主机往返完整", bytes.Equal(gotEcho, wantEcho))
+	select {
+	case err := <-echoRes:
+		check("可靠流:成员甲回显侧正常收尾", err == nil)
+	case <-time.After(20 * time.Second):
+		check("可靠流:成员甲回显侧正常收尾", false)
+	}
+
+	// 乙做单向接收:验证第二条流独立编号、按序完整。
+	g2Res := make(chan []byte, 1)
+	go func() {
+		st, err := g2.Flow().Accept()
+		if err != nil {
+			g2Res <- nil
+			return
+		}
+		defer st.Close()
+		buf := make([]byte, 256*1024)
+		if err := readStreamExact(st, buf); err != nil {
+			g2Res <- nil
+			return
+		}
+		g2Res <- buf
+	}()
+	hs2, err := host.Flow().Dial(ip2)
+	if err != nil {
+		return err
+	}
+	wantOne := make([]byte, 256*1024)
+	for i := range wantOne {
+		wantOne[i] = byte(i*17 + 3)
+	}
+	if _, err := hs2.Write(wantOne); err != nil {
+		return err
+	}
+	select {
+	case gotOne := <-g2Res:
+		check("可靠流:256KB 主机 → 成员乙顺序完整", bytes.Equal(gotOne, wantOne))
+	case <-time.After(20 * time.Second):
+		check("可靠流:256KB 主机 → 成员乙顺序完整", false)
+	}
+	_ = hs2.Close()
+
 	host.Close()
 	fmt.Printf("全部通过(runtime %s)\n", runtime.Version())
 	return nil
@@ -495,4 +608,17 @@ func recvRooms(ch <-chan []disc.Room, d time.Duration) ([]disc.Room, bool) {
 	case <-time.After(d):
 		return nil, false
 	}
+}
+
+// readStreamExact 读满 buf;流提前结束视为错误。
+func readStreamExact(st stream.Stream, buf []byte) error {
+	n := 0
+	for n < len(buf) {
+		m, err := st.Read(buf[n:])
+		n += m
+		if err != nil {
+			return fmt.Errorf("流提前结束 %d/%d: %w", n, len(buf), err)
+		}
+	}
+	return nil
 }

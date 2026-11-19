@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"eglan/internal/crypto"
+	"eglan/internal/stream"
 	"eglan/internal/stun"
 )
 
@@ -94,6 +95,7 @@ type Guest struct {
 	pub      []byte
 	hostName string
 	selfNet  *net.IPNet
+	flow     *stream.Session
 }
 
 // DialGuest 向主机发起加入:握手 → 入房证明 → 领取地址。
@@ -172,14 +174,24 @@ func DialGuest(addr string, psk []byte, id *crypto.Identity, name string, timeou
 		}
 		_ = pc.SetDeadline(time.Time{})
 		cloneIP := append(net.IP(nil), ip...)
-		return &Guest{
+		g := &Guest{
 			pc: pc, remote: cloneAddr(from), sess: sess,
 			pub:      append([]byte(nil), hpub...),
 			hostName: clipName(hostName),
 			selfNet:  &net.IPNet{IP: cloneIP, Mask: net.CIDRMask(prefix, 32)},
-		}, nil
+		}
+		g.flow = stream.NewSession(guestFlow{g})
+		return g, nil
 	}
 }
+
+// guestFlow 把流帧封进主机通道;目标固定是主机,忽略 dst。
+type guestFlow struct{ g *Guest }
+
+func (d guestFlow) Deliver(_ net.IP, data []byte) error { return d.g.Send(data) }
+
+// Flow 返回成员侧的可靠流集合,供文件传输与插件宿主使用。
+func (g *Guest) Flow() *stream.Session { return g.flow }
 
 // Send 投递一个 IP 包到主机;单播与广播的去向由主机裁决。
 func (g *Guest) Send(pkt []byte) error {
@@ -204,8 +216,26 @@ func (g *Guest) Recv() ([]byte, error) {
 		if isAssign(payload) {
 			continue // 主机对重连的幂等重发,首帧分配在握手内已消费
 		}
+		if len(payload) > 0 && payload[0] < 0x40 {
+			g.flow.Dispatch(g.hostTunnelIP(), payload)
+			continue // 流帧交给可靠流层,不当作 IP 包
+		}
 		return payload, nil
 	}
+}
+
+// hostTunnelIP 推算主机在房间内的隧道地址(子网首个可用地址)。
+func (g *Guest) hostTunnelIP() net.IP {
+	ip := g.selfNet.IP.To4()
+	if ip == nil {
+		return nil
+	}
+	base := make(net.IP, 4)
+	for i := 0; i < 4; i++ {
+		base[i] = ip[i] & g.selfNet.Mask[i]
+	}
+	base[3] |= 1
+	return base
 }
 
 // SelfNet 返回主机分配的隧道地址副本。
@@ -216,11 +246,19 @@ func (g *Guest) SelfNet() *net.IPNet {
 // HostName 返回主机显示名。
 func (g *Guest) HostName() string { return g.hostName }
 
+// HostIP 返回主机在房间内的隧道地址。
+func (g *Guest) HostIP() net.IP { return g.hostTunnelIP() }
+
 // PeerPub 返回主机公钥副本。
 func (g *Guest) PeerPub() []byte { return append([]byte(nil), g.pub...) }
 
-// Close 关闭套接字。
-func (g *Guest) Close() error { return g.pc.Close() }
+// Close 关闭套接字与全部流。
+func (g *Guest) Close() error {
+	if g.flow != nil {
+		g.flow.Close()
+	}
+	return g.pc.Close()
+}
 
 // ------------------------------------------------------------
 // 帧助手
@@ -300,6 +338,8 @@ type Host struct {
 	done      chan struct{}
 	closeOnce sync.Once
 	sendMu    sync.Mutex // 会话封包内含发送计数器,并发封包必须串行
+
+	flow *stream.Session
 }
 
 // NewHost 绑定端口并构造主机;调用 Start 开始收包。
@@ -324,7 +364,7 @@ func NewHostOn(pc *net.UDPConn, psk []byte, id *crypto.Identity, name, cidr stri
 		pc.Close()
 		return nil, fmt.Errorf("mesh: 仅支持 IPv4 地址段")
 	}
-	return &Host{
+	h := &Host{
 		pc: pc, psk: psk, id: id, name: clipName(name),
 		subnet: ipnet, selfIP: selfIP,
 		byAddr: map[string]*member{}, byPub: map[string]*member{}, byIP: map[string]*member{},
@@ -332,8 +372,30 @@ func NewHostOn(pc *net.UDPConn, psk []byte, id *crypto.Identity, name, cidr stri
 		stuns:    map[stun.TransactionID]stunPending{},
 		localOut: make(chan []byte, 256),
 		done:     make(chan struct{}),
-	}, nil
+	}
+	h.flow = stream.NewSession(hostFlow{h})
+	return h, nil
 }
+
+// hostFlow 把流帧加密投递给房间成员;成员地址即隧道地址。
+type hostFlow struct{ h *Host }
+
+func (d hostFlow) Deliver(dst net.IP, data []byte) error {
+	if dst == nil {
+		return stream.ErrNoRoute
+	}
+	d.h.mu.RLock()
+	m := d.h.byIP[dst.String()]
+	d.h.mu.RUnlock()
+	if m == nil {
+		return stream.ErrNoRoute
+	}
+	d.h.rawSend(m, data)
+	return nil
+}
+
+// Flow 返回主机侧的可靠流集合,供文件传输与插件宿主使用。
+func (h *Host) Flow() *stream.Session { return h.flow }
 
 // Start 启动接收循环,直到 Close 或套接字出错。
 func (h *Host) Start() {
@@ -547,9 +609,13 @@ func (h *Host) allocate() net.IP {
 	return nil
 }
 
-// dispatch 把成员发来的 IP 包送往该去的地方:
+// dispatch 把成员发来的数据分派:流帧交给可靠流层,其余按 IPv4 处理。
 // 本机地址交给本机协议栈;广播与组播向全房间洪水;其余按目的地址单播转发。
 func (h *Host) dispatch(m *member, pkt []byte) {
+	if len(pkt) > 0 && pkt[0] < 0x40 {
+		h.flow.Dispatch(m.ip, pkt) // 流帧首字节为帧类型(1~4),与 IPv4 首字节(0x4x)不重叠
+		return
+	}
 	if len(pkt) < 20 || pkt[0]>>4 != 4 {
 		return // 只转发 IPv4
 	}
@@ -625,6 +691,9 @@ func (h *Host) Done() <-chan struct{} { return h.done }
 func (h *Host) Close() error {
 	h.closeOnce.Do(func() {
 		close(h.done)
+		if h.flow != nil {
+			h.flow.Close()
+		}
 		_ = h.pc.Close()
 	})
 	return nil
