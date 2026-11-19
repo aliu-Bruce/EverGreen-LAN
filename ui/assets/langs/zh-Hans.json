@@ -119,7 +119,7 @@
   "set.stunHint": "仅在你点击探测时访问一次,游戏数据不经过它",
   "btn.add": "添加",
   "btn.remove": "移除",
-  "btn.restartAdmin": "以管理员权限重启",
+  "btn.restartAdmin": "以管理员权限重启核心",
   "set.perm": "运行权限",
   "set.permAdmin": "已提权",
   "set.permAdminHint": "已以管理员权限运行,开房与放行防火墙都可用",

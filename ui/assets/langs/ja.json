@@ -119,7 +119,7 @@
   "set.stunHint": "「公開アドレスを確認」を押したときだけ一度アクセスします。ゲームデータは通過しません",
   "btn.add": "追加",
   "btn.remove": "削除",
-  "btn.restartAdmin": "管理者権限で再起動",
+  "btn.restartAdmin": "管理者権限でコアを再起動",
   "set.perm": "実行権限",
   "set.permAdmin": "昇格済み",
   "set.permAdminHint": "管理者権限で実行中。ルーム作成とファイアウォール許可が使えます",

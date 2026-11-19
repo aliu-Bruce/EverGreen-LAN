@@ -95,33 +95,15 @@ class _ShellState extends State<Shell> {
   void _goJoin() => setState(() => _page = ShellPage.join);
 
   void _showCoreError(BuildContext context, String message) {
-    final c = Eg.of(context).c;
     final app = AppState.of(context);
+    // 核心的错误文案只在权限不足时附带这句;其余失败重启也无济于事。
+    final needsAdmin = message.contains('管理员权限') || message.contains('权限被拒');
     showDialog<void>(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: c.badDim,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: c.bad)),
-        child: Container(
-          width: 460,
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(message, style: egMono(c, size: 12.5, weight: FontWeight.w700, color: c.bad, height: 1.6)),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: EgButton(
-                  label: app.langs.t('btn.close'),
-                  small: true,
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-            ],
-          ),
-        ),
+      builder: (context) => _CoreErrorDialog(
+        message: message,
+        canRestart: needsAdmin && app.canElevate && app.admin != true,
+        onRetry: _goCreate,
       ),
     );
   }
@@ -184,6 +166,100 @@ class _ShellState extends State<Shell> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// 核心错误弹窗:权限不足时直接给出提权入口,而不是只让用户关掉。
+class _CoreErrorDialog extends StatefulWidget {
+  final String message;
+  final bool canRestart;
+  final VoidCallback? onRetry;
+  const _CoreErrorDialog({required this.message, required this.canRestart, this.onRetry});
+
+  @override
+  State<_CoreErrorDialog> createState() => _CoreErrorDialogState();
+}
+
+class _CoreErrorDialogState extends State<_CoreErrorDialog> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _restart() async {
+    final app = AppState.of(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final err = await app.elevateCore();
+    if (!mounted) return;
+    if (err != null) {
+      setState(() {
+        _busy = false;
+        _error = err;
+      });
+      return;
+    }
+    final retry = widget.onRetry;
+    Navigator.of(context).pop();
+    retry?.call(); // 核心已提权,直接重试刚才的开房动作
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppState.of(context);
+    final c = Eg.of(context).c;
+    return Dialog(
+      backgroundColor: c.badDim,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: c.bad)),
+      child: Container(
+        width: 460,
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(
+              widget.message,
+              style: egMono(c, size: 12.5, weight: FontWeight.w700, color: c.bad, height: 1.6),
+            ),
+            if (widget.canRestart) ...[
+              const SizedBox(height: 10),
+              Text(
+                app.langs.t('set.permUserHint'),
+                style: egText(c, size: 12, color: c.muted, height: 1.6),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: egText(c, size: 12, color: c.bad, height: 1.5)),
+            ],
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  EgButton(
+                    label: app.langs.t('btn.close'),
+                    small: true,
+                    onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                  ),
+                  if (widget.canRestart) ...[
+                    const SizedBox(width: 8),
+                    EgButton(
+                      label: _busy ? app.langs.t('set.permRestarting') : app.langs.t('btn.restartAdmin'),
+                      kind: EgBtnKind.primary,
+                      small: true,
+                      onPressed: _busy ? null : _restart,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

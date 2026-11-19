@@ -2,7 +2,9 @@
 // P1 提供两种能力:
 //
 //	-test-echo        进程内自检:三人房间网全链路,不建网卡、不需管理员;
-//	-role host|client 真实模式:建虚拟网卡,把本机经网卡进出的 IP 包送入房间。
+//	-role host|client 真实模式:建虚拟网卡,把本机经网卡进出的 IP 包送入房间;
+//	-ipc              界面通道:界面以普通权限拉起,stdin/stdout 行协议;
+//	-ipc-connect      提权后的核心回调界面:连接本机回环端口,界面不随之提权。
 //
 // 房间码是唯一凭证:归一化后作为预共享密钥混入密钥派生,持码者才能入房。
 // 转发原则:只搬运 IP 包,不改内容、不辨协议;一切服务(如 ping、游戏)
@@ -47,6 +49,8 @@ func main() {
 		mtu     = flag.Int("mtu", 1400, "虚拟网卡 MTU")
 		echo    = flag.Bool("test-echo", false, "进程内自检,不需要管理员")
 		ipcMode = flag.Bool("ipc", false, "界面通道:stdin/stdout 行协议,由界面程序调用")
+		ipcAddr = flag.String("ipc-connect", "", "界面回调通道:连接界面提供的本机回环地址(由提权后的核心使用)")
+		ipcTok  = flag.String("ipc-token", "", "回调通道令牌,由界面生成")
 	)
 	flag.Parse()
 
@@ -60,6 +64,8 @@ func main() {
 	switch {
 	case *echo:
 		err = testEcho()
+	case *ipcAddr != "":
+		err = ipc.Connect(*ipcAddr, *ipcTok)
 	case *ipcMode:
 		err = ipc.Run(os.Stdin, os.Stdout)
 	default:
@@ -67,7 +73,10 @@ func main() {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "eglan:", err)
-		waitIfConsole()
+		// 界面通道由界面程序托管,失败时不能停在隐藏窗口里等回车。
+		if !*ipcMode && *ipcAddr == "" {
+			waitIfConsole()
+		}
 		os.Exit(1)
 	}
 }
@@ -82,6 +91,8 @@ func banner() {
   egland -role client -code 房间码 -peer 主机IP:47777
                                        加入房间:以管理员运行
   egland -ipc                          界面通道(由界面程序调用,不手动使用)
+  egland -ipc-connect 地址 -ipc-token 令牌
+                                       提权核心回调界面(由界面程序调用)
 
 按回车键退出...`)
 	bufio.NewReader(os.Stdin).ReadString('\n')

@@ -164,7 +164,10 @@ ping 10.66.7.2        # 打到另一成员,经主机转发
 
 ## 9. 界面通道(-ipc,给界面开发者)
 
-界面程序以子进程拉起 `egland -ipc`,经 stdin/stdout 一行一个 JSON(UTF-8)通信:
+界面程序以子进程拉起 `egland -ipc`,经 stdin/stdout 一行一个 JSON(UTF-8)通信。
+需要管理员权限时,旧核心用系统 UAC 拉起新的核心,新核心以
+`-ipc-connect 127.0.0.1:端口 -ipc-token 令牌` 连回界面,首行认证后沿用同一行协议;
+界面窗口本身始终以普通权限运行。
 
 | 请求 | 应答 |
 |---|---|
@@ -174,15 +177,15 @@ ping 10.66.7.2        # 打到另一成员,经主机转发
 | `{"op":"status"}` / `{"op":"members"}` | `status`(state/code/self)/ `members`(list) |
 | `{"op":"stun","server":"stun.example:3478"}` | 从房间套接字探测公网映射;`ok` 带 `ip`/`port`,仅 hosting 时可用,约 4 秒超时 |
 | `{"op":"env"}` | `{"type":"env","admin":false,"canElevate":true}`:是否已提权、能否一键提权 |
-| `{"op":"restart-admin","exe":"C:\\…\\eglan_ui.exe"}` | 在支持的平台用系统提权弹窗重启界面;成功 `ok relaunched:true`,界面自行退出 |
+| `{"op":"elevate-core","addr":"127.0.0.1:port","token":"…"}` | 用系统提权弹窗拉起新的核心,新核心连回界面提供的回环端口;成功 `ok relaunched:true`,旧核心随即退出。仅空闲时可用 |
 | `{"op":"send-file","to":"10.66.7.2","path":"…"}` | 向房间成员发文件;`ok` 带传输编号 `transfer`。主机可指定任一成员,成员省略 `to` 即发主机 |
 | `{"op":"accept-file","transfer":"t1","path":"…"}` | 接受报价并指定绝对保存路径;先写 `<path>.eglan-part`,校验 SHA-256 后改名 |
 | `{"op":"reject-file","transfer":"t1","reason":"…"}` | 拒绝接收;`reason` 可选 |
 | `{"op":"pick-file","title":"…"}` / `{"op":"pick-save","title":"…","name":"…"}` | 调系统原生打开/保存对话框;`ok` 带 `path`,用户取消时带 `"cancel":true`,平台不支持时返回 `err` |
 
-权限查询只读,不改动系统状态;`restart-admin` 只接受存在的绝对路径,
-用户取消 UAC 或系统拒绝时返回 `err`,界面保留原实例。已在管理员权限下调用时
-返回 `ok relaunched:false`。
+权限查询只读,不改动系统状态;`elevate-core` 只接受本机回环地址与至少 16 字节的十六进制令牌,
+用户取消 UAC 或系统拒绝时返回 `err`,旧核心与界面都保持原状。已在管理员权限下调用时
+返回 `ok relaunched:false`。界面本身始终不提权。
 
 空闲时核心监听 UDP 47778,同网段有房间就推事件:
 

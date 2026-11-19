@@ -1,7 +1,5 @@
 // 设置页:外观(主题/导航)、身份(用户名)、权限、网络(端口/MTU/STUN)、关于。
 // 只放有真实后端支撑的项。
-import 'dart:io';
-
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
@@ -69,22 +67,19 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // 提权由核心发起(Windows runas);成功后本实例退出,新实例接管。
+  // 提权只换后台核心:成功后本界面继续运行,不需要退出。
   Future<void> _restartAsAdmin(AppState app) async {
     if (_restarting) return;
     setState(() => _restarting = true);
-    final err = await app.restartAsAdmin();
+    final err = await app.elevateCore();
     if (!mounted) return;
-    if (err != null) {
-      setState(() => _restarting = false);
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-        content: Text(err),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
-      ));
-      return;
-    }
-    exit(0);
+    setState(() => _restarting = false);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.showSnackBar(SnackBar(
+      content: Text(err ?? app.langs.t('set.permDone')),
+      behavior: SnackBarBehavior.floating,
+      duration: Duration(seconds: err == null ? 3 : 4),
+    ));
   }
 
   @override

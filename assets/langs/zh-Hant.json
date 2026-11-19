@@ -119,7 +119,7 @@
   "set.stunHint": "僅在你按下偵測時存取一次,遊戲資料不經過它",
   "btn.add": "新增",
   "btn.remove": "移除",
-  "btn.restartAdmin": "以系統管理員權限重新啟動",
+  "btn.restartAdmin": "以系統管理員權限重新啟動核心",
   "set.perm": "執行權限",
   "set.permAdmin": "已提權",
   "set.permAdminHint": "已以系統管理員權限執行,開房與放行防火牆皆可用",

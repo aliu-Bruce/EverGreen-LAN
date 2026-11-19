@@ -5,6 +5,7 @@ package elevate
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -24,9 +25,9 @@ func Admin() bool {
 // Available 报告当前平台能否一键提权。
 func Available() bool { return true }
 
-// Restart 用 runas 动词重新拉起 exe,由系统弹出 UAC 确认。
+// RunAs 用 runas 动词启动 exe,由系统弹出 UAC 确认;hidden 为真时隐藏新进程窗口。
 // 用户取消或提权失败时返回错误;成功返回即代表新进程已创建。
-func Restart(exe string) error {
+func RunAs(exe string, args []string, hidden bool) error {
 	verb, err := syscall.UTF16PtrFromString("runas")
 	if err != nil {
 		return fmt.Errorf("提权参数无效: %w", err)
@@ -39,14 +40,25 @@ func Restart(exe string) error {
 	if err != nil {
 		return fmt.Errorf("程序目录无效: %w", err)
 	}
-	const swShownormal = 1
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = syscall.EscapeArg(arg)
+	}
+	params, err := syscall.UTF16PtrFromString(strings.Join(quoted, " "))
+	if err != nil {
+		return fmt.Errorf("启动参数无效: %w", err)
+	}
+	show := uintptr(1) // SW_SHOWNORMAL
+	if hidden {
+		show = 0 // SW_HIDE
+	}
 	ret, _, _ := procShellExecuteW.Call(
 		0,
 		uintptr(unsafe.Pointer(verb)),
 		uintptr(unsafe.Pointer(file)),
-		0, // 无启动参数:界面自己从偏好恢复
+		uintptr(unsafe.Pointer(params)),
 		uintptr(unsafe.Pointer(dir)),
-		swShownormal,
+		show,
 	)
 	if ret <= 32 {
 		return fmt.Errorf("未能以管理员权限启动(可能取消了 UAC 提示)")

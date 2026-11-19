@@ -1,5 +1,7 @@
 // Package ipc 是界面与核心之间的通道:界面以子进程拉起 egland -ipc,
 // 通过 stdin/stdout 一行一个 JSON 通信(行协议,UTF-8)。
+// 需要管理员权限时,旧核心用 runas 拉起新的核心,新核心经
+// -ipc-connect 连回界面提供的本机回环端口;界面本身始终保持普通权限。
 //
 // 协议约定:
 //
@@ -7,7 +9,7 @@
 //	      {"op":"join", "code":"…", "peer":"host:port"} 入房;先回执 joining,完成后发 room-up 事件
 //	      {"op":"stop"} {"op":"status"} {"op":"members"}
 //	      {"op":"stun","server":"stun.example:3478"} 从房间套接字探测公网映射
-//	      {"op":"env"} {"op":"restart-admin","exe":"…"}
+//	      {"op":"env"} {"op":"elevate-core","addr":"127.0.0.1:port","token":"…"}
 //	      {"op":"send-file","to":"10.66.7.2","path":"…"} 向成员发文件
 //	      {"op":"accept-file","transfer":"t1","path":"…"} 接受并指定保存路径
 //	      {"op":"reject-file","transfer":"t1","reason":"…"} 拒绝接收
@@ -22,6 +24,9 @@
 //	      {"type":"event","name":"file-done","transfer":"t1","ok":true,"path":"…",…}
 //	名册  {"type":"members","list":[{"name":"…","ip":"…","pub":"…"}]}
 //
+// 回环通道的第一行固定为 {"type":"auth","token":"…"},由界面核对令牌,
+// 防止本机其它进程抢先接管这条连接。
+//
 // 空闲时核心监听局域网发现端口,把同网段的房间推给界面;开房后改播报,
 // 离房后恢复监听。发现只负责列出房间,加入仍走 join。
 //
@@ -29,7 +34,7 @@
 // 供界面把异步结果与请求关联;不带 id 则应答也不含 id。
 //
 // 一次一个房间:同进程串行承载 host 或 client 之一;
-// 界面关闭管道即视为退出指令,核心打扫干净(关网卡、关监听)再走。
+// 界面关闭管道或回环连接即视为退出指令,核心打扫干净(关网卡、关监听)再走。
 package ipc
 
 import (
@@ -42,7 +47,6 @@ import (
 	"net"
 	"os"
 	"os/user"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -91,7 +95,8 @@ type request struct {
 	Adapter  string `json:"adapter"`
 	MTU      int    `json:"mtu"`
 	CIDR     string `json:"cidr"`
-	Exe      string `json:"exe"`
+	Addr     string `json:"addr"`
+	Token    string `json:"token"`
 	Server   string `json:"server"`
 	To       string `json:"to"`
 	Path     string `json:"path"`
@@ -102,9 +107,11 @@ type request struct {
 
 // Bridge 持有房间状态机与全部连接;方法并发安全。
 type Bridge struct {
-	in  io.Reader
-	out *json.Encoder
-	wmu sync.Mutex // 输出串行化,一行一个 JSON
+	in       io.Reader
+	out      *json.Encoder
+	wmu      sync.Mutex    // 输出串行化,一行一个 JSON
+	quit     chan struct{} // 关闭后 Run 打扫并退出
+	quitOnce sync.Once
 
 	mu    sync.Mutex
 	state string // idle / hosting / joining / joined
@@ -121,7 +128,7 @@ type Bridge struct {
 // Run 从 in 逐行读请求、向 out 写应答,直到输入关闭;
 // 返回前打扫房间,保证不留虚拟网卡与监听。
 func Run(in io.Reader, out io.Writer) error {
-	b := &Bridge{in: in, state: "idle"}
+	b := &Bridge{in: in, state: "idle", quit: make(chan struct{})}
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
 	b.out = enc
@@ -130,20 +137,64 @@ func Run(in io.Reader, out io.Writer) error {
 	b.mu.Lock()
 	b.startDiscoveryLocked()
 	b.mu.Unlock()
-	sc := bufio.NewScanner(in)
-	sc.Buffer(make([]byte, 0, 64*1024), 64*1024)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
+
+	lines := make(chan string)
+	scanDone := make(chan error, 1)
+	go func() {
+		sc := bufio.NewScanner(in)
+		sc.Buffer(make([]byte, 0, 64*1024), 64*1024)
+		for sc.Scan() {
+			select {
+			case lines <- sc.Text():
+			case <-b.quit:
+				return
+			}
 		}
-		b.dispatch(line)
+		scanDone <- sc.Err()
+	}()
+
+	for {
+		select {
+		case line := <-lines:
+			line = strings.TrimSpace(line)
+			if line != "" {
+				b.dispatch(line)
+			}
+		case err := <-scanDone:
+			b.shutdown()
+			return err
+		case <-b.quit:
+			b.shutdown()
+			return nil
+		}
 	}
+}
+
+// shutdown 统一打扫房间与发现监听。
+func (b *Bridge) shutdown() {
 	b.mu.Lock()
 	b.teardownLocked()
 	b.stopDiscoveryLocked()
 	b.mu.Unlock()
-	return nil
+}
+
+// Connect 连接界面监听的本地端口,首行携带令牌,随后使用同一行协议。
+// 只用于界面以管理员权限拉起核心的场景:界面保持普通权限,核心单独提权。
+func Connect(addr, token string) error {
+	if addr == "" || token == "" {
+		return fmt.Errorf("缺少回调地址或令牌")
+	}
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("连接界面失败: %w", err)
+	}
+	defer conn.Close()
+	enc := json.NewEncoder(conn)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(map[string]string{"type": "auth", "token": token}); err != nil {
+		return fmt.Errorf("向界面认证失败: %w", err)
+	}
+	return Run(conn, conn)
 }
 
 // dispatch 解析并执行一条请求;协议错误即时回报,不中断会话。
@@ -168,8 +219,8 @@ func (b *Bridge) dispatch(line string) {
 		b.opStun(req)
 	case "env":
 		b.opEnv(req)
-	case "restart-admin":
-		b.opRestartAdmin(req)
+	case "elevate-core":
+		b.opElevateCore(req)
 	case "send-file":
 		b.opSendFile(req)
 	case "accept-file":
@@ -244,9 +295,9 @@ func (b *Bridge) opEnv(req request) {
 	})
 }
 
-// opRestartAdmin 以管理员权限重新拉起界面程序;由界面在成功后自行退出。
-// 路径由界面随请求带来,只接受存在的绝对路径。
-func (b *Bridge) opRestartAdmin(req request) {
+// opElevateCore 用管理员权限拉起新的核心进程,并让它连回界面提供的本地端口。
+// 旧核心只在新进程创建成功后退出;界面本身始终保持普通权限。
+func (b *Bridge) opElevateCore(req request) {
 	if !elevate.Available() {
 		b.errID(req.ID, "当前平台暂不支持一键提权")
 		return
@@ -255,24 +306,40 @@ func (b *Bridge) opRestartAdmin(req request) {
 		b.send(map[string]any{"type": "ok", "id": req.ID, "admin": true, "relaunched": false})
 		return
 	}
-	if req.Exe == "" || !filepath.IsAbs(req.Exe) {
-		b.errID(req.ID, "缺少界面程序的绝对路径")
+	b.mu.Lock()
+	idle := b.state == "idle"
+	b.mu.Unlock()
+	if !idle {
+		b.errID(req.ID, "请先退出房间,再切换管理员核心")
 		return
 	}
-	info, err := os.Stat(req.Exe)
+	addr, err := net.ResolveTCPAddr("tcp", req.Addr)
+	if err != nil || !addr.IP.IsLoopback() {
+		b.errID(req.ID, "回调地址必须是本机回环地址")
+		return
+	}
+	raw, err := hex.DecodeString(req.Token)
+	if err != nil || len(raw) < 16 {
+		b.errID(req.ID, "回调令牌无效")
+		return
+	}
+	exe, err := os.Executable()
 	if err != nil {
-		b.errID(req.ID, "找不到界面程序: %s", req.Exe)
+		b.errID(req.ID, "找不到核心程序: %v", err)
 		return
 	}
-	if !info.Mode().IsRegular() {
-		b.errID(req.ID, "界面程序路径不是文件: %s", req.Exe)
-		return
-	}
-	if err := elevate.Restart(req.Exe); err != nil {
+	args := []string{"-ipc-connect", req.Addr, "-ipc-token", req.Token}
+	if err := elevate.RunAs(exe, args, true); err != nil {
 		b.errID(req.ID, "%v", err)
 		return
 	}
 	b.send(map[string]any{"type": "ok", "id": req.ID, "admin": false, "relaunched": true})
+	b.requestQuit()
+}
+
+// requestQuit 让 Run 在处理完当前请求后打扫退出;重复调用安全。
+func (b *Bridge) requestQuit() {
+	b.quitOnce.Do(func() { close(b.quit) })
 }
 
 // opStartHost 开房间:建卡(需管理员)→ 放行 → 监听 → 收泵。

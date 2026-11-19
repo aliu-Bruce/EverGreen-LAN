@@ -119,7 +119,7 @@
   "set.stunHint": "Solo se contacta al pulsar Comprobar; los datos de juego nunca pasan por él",
   "btn.add": "Añadir",
   "btn.remove": "Quitar",
-  "btn.restartAdmin": "Reiniciar como administrador",
+  "btn.restartAdmin": "Reiniciar el núcleo como administrador",
   "set.perm": "Permisos",
   "set.permAdmin": "Con permisos",
   "set.permAdminHint": "Se ejecuta como administrador; crear sala y reglas de firewall disponibles",

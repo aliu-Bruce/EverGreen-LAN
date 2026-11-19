@@ -119,7 +119,7 @@
   "set.stunHint": "Contacted only when you press Probe; game data never passes through it",
   "btn.add": "Add",
   "btn.remove": "Remove",
-  "btn.restartAdmin": "Restart as administrator",
+  "btn.restartAdmin": "Restart core as administrator",
   "set.perm": "Permissions",
   "set.permAdmin": "Elevated",
   "set.permAdminHint": "Running as administrator; hosting and firewall rules are available",

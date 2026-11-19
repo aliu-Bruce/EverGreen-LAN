@@ -1,6 +1,7 @@
 // 应用状态机:偏好、语言、核心桥与房间状态集中于此,ChangeNotifier 通知界面。
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/widgets.dart';
 
@@ -62,6 +63,10 @@ class AppState extends ChangeNotifier {
   // 运行权限:核心报告的是否已提权、能否一键提权。
   bool? admin;
   bool canElevate = false;
+  bool _elevating = false;
+  String? _corePath;
+
+  bool get elevating => _elevating;
 
   RoomState room = RoomState.idle;
   String? code;      // 房间码展示形态 XXXX XXXX
@@ -110,6 +115,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     try {
+      _corePath = path;
       await bridge.start(path);
       bridgeReady = true;
       _sub = bridge.messages.listen(_onMessage, onError: (Object e) {
@@ -118,12 +124,17 @@ class AppState extends ChangeNotifier {
         _setRoom(RoomState.idle);
         notifyListeners();
       });
-      unawaited(bridge.request({'op': 'status'}, timeout: const Duration(seconds: 3)).catchError((_) => <String, dynamic>{}));
-      unawaited(bridge.request({'op': 'env'}, timeout: const Duration(seconds: 3)).catchError((_) => <String, dynamic>{}));
+      _requestInitial();
     } catch (e) {
       bridgeProblem = e.toString();
     }
     notifyListeners();
+  }
+
+  // 首帧之后补拉一次状态与权限;失败不阻塞界面。
+  void _requestInitial() {
+    unawaited(bridge.request({'op': 'status'}, timeout: const Duration(seconds: 3)).catchError((_) => <String, dynamic>{}));
+    unawaited(bridge.request({'op': 'env'}, timeout: const Duration(seconds: 3)).catchError((_) => <String, dynamic>{}));
   }
 
   @override
@@ -218,19 +229,89 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 以管理员权限重启界面;成功返回 null,界面随后退出让新实例接管。
-  Future<String?> restartAsAdmin() async {
-    if (!bridgeReady) return '核心进程未运行';
+  // 只重启后台核心:界面监听本机回环端口,旧核心用 runas 拉起新核心,
+  // 新核心连回后由界面接管;界面自身始终是普通权限。成功返回 null。
+  Future<String?> elevateCore() async {
+    if (_elevating) return null;
+    if (!bridgeReady) return langs.t('err.coreNotRunning');
+    if (admin == true) return null;
+    final path = _corePath;
+    if (path == null) return langs.t('err.bridgeMissing');
+    _elevating = true;
+    notifyListeners();
+
+    ServerSocket? server;
+    Socket? socket;
     try {
+      final token = _randomToken();
+      server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
       final ack = await bridge.request({
-        'op': 'restart-admin',
-        'exe': Platform.resolvedExecutable,
-      }, timeout: const Duration(seconds: 90));
-      if (ack['relaunched'] != true) return '当前已是管理员权限';
+        'op': 'elevate-core',
+        'addr': '127.0.0.1:${server.port}',
+        'token': token,
+      }, timeout: const Duration(minutes: 10)); // UAC 提示可能停留很久
+      if (ack['relaunched'] != true) return null; // 已是管理员
+      await bridge.stop(); // 旧核心已交棒,主动断开并抑制它的退出事件
+      bridgeReady = false;
+      notifyListeners();
+
+      socket = await server.first.timeout(const Duration(seconds: 60));
+      await bridge.adoptSocket(socket, token);
+      socket = null; // 连接已交给桥,后续由桥管理
+      bridgeReady = true;
+      bridgeProblem = null;
+      admin = true;
+      canElevate = true;
+      notifyListeners();
+
+      final env = await bridge.request({'op': 'env'}, timeout: const Duration(seconds: 5));
+      admin = env['admin'] == true;
+      canElevate = env['canElevate'] == true;
+      unawaited(bridge.request({'op': 'status'}, timeout: const Duration(seconds: 3)).catchError((_) => <String, dynamic>{}));
       return null;
+    } on TimeoutException {
+      await _restoreCore(path);
+      return langs.t('err.elevateTimeout');
     } on IpcError catch (e) {
+      await _restoreCore(path);
       return e.message;
+    } catch (e) {
+      await _restoreCore(path);
+      return e.toString();
+    } finally {
+      _elevating = false;
+      try {
+        await server?.close();
+      } catch (_) {}
+      socket?.destroy();
+      notifyListeners();
     }
+  }
+
+  // 提权失败时恢复普通核心;UAC 取消时旧核心仍在,直接沿用。
+  Future<void> _restoreCore(String path) async {
+    if (bridge.running) {
+      bridgeReady = true;
+      return;
+    }
+    try {
+      await bridge.start(path);
+      _corePath = path;
+      bridgeReady = true;
+      bridgeProblem = null;
+      _requestInitial();
+    } catch (e) {
+      bridgeReady = false;
+      bridgeProblem = e.toString();
+      _setRoom(RoomState.idle);
+    }
+  }
+
+  // 32 位十六进制令牌;核心在回环连接首行报出,界面据此确认对端身份。
+  String _randomToken() {
+    final r = Random.secure();
+    final bytes = List<int>.generate(16, (_) => r.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
   // ---- 房间操作 ----
@@ -555,11 +636,14 @@ class AppState extends ChangeNotifier {
         admin = msg['admin'] == true;
         canElevate = msg['canElevate'] == true;
       case 'core-exit':
-        bridgeReady = false;
-        admin = null;
-        canElevate = false;
-        bridgeProblem = (msg['message'] as String?) ?? '核心进程已退出';
-        _setRoom(RoomState.idle);
+        // 提权交接期间,或新核心已接管时,旧连接的退出事件不再影响状态。
+        if (!_elevating && !bridge.running) {
+          bridgeReady = false;
+          admin = null;
+          canElevate = false;
+          bridgeProblem = (msg['message'] as String?) ?? '核心进程已退出';
+          _setRoom(RoomState.idle);
+        }
     }
     notifyListeners();
   }
