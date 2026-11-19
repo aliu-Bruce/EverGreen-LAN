@@ -19,6 +19,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"eglan/internal/room"
 	"eglan/internal/stream"
 	"eglan/internal/stun"
+	"eglan/internal/transfer"
 	"eglan/internal/tun"
 )
 
@@ -268,7 +270,8 @@ func pumpIn(from packetReceiver, dev tun.Device, done chan<- error) {
 
 // testEcho 在进程内走一遍三人房间网全链路:
 // 房间码握手与地址分配 → 成员间单播 → 广播洪水 → 交付主机本机 →
-// 错房间码拒绝 → 成员名册 → 防重放 → 发现信标收发与过滤。
+// 错房间码拒绝 → 成员名册 → 防重放 → 发现信标收发与过滤 →
+// 可靠流往返 → 文件传输与 SHA-256 校验。
 // 全程不建网卡,因此不需要管理员权限。
 func testEcho() error {
 	check := func(name string, cond bool) {
@@ -562,6 +565,74 @@ func testEcho() error {
 		check("可靠流:256KB 主机 → 成员乙顺序完整", false)
 	}
 	_ = hs2.Close()
+
+	// ---- 文件传输:主机 → 成员甲,走同一可靠流层 ----
+	// 用系统临时目录,进程结束即清理;接收方自动接受并落盘。
+	dir, err := os.MkdirTemp("", "eglan-selftest-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	srcPath := filepath.Join(dir, "自检文件.bin")
+	dstPath := filepath.Join(dir, "收到的文件.bin")
+	wantFile := make([]byte, 512*1024)
+	for i := range wantFile {
+		wantFile[i] = byte(i*53 + 11)
+	}
+	if err := os.WriteFile(srcPath, wantFile, 0o600); err != nil {
+		return err
+	}
+
+	hostXferEvents := make(chan transfer.Event, 64)
+	g1XferEvents := make(chan transfer.Event, 64)
+	hostXfer := transfer.New(host.SelfIP(), host.Flow(), func(e transfer.Event) { hostXferEvents <- e })
+	g1Xfer := transfer.New(g1.HostIP(), g1.Flow(), func(e transfer.Event) { g1XferEvents <- e })
+	defer hostXfer.Close()
+	defer g1Xfer.Close()
+	go hostXfer.Serve()
+	go g1Xfer.Serve()
+
+	g1Done := make(chan transfer.Event, 1)
+	go func() {
+		for e := range g1XferEvents {
+			switch e.Kind {
+			case "offer":
+				if err := g1Xfer.Accept(e.ID, dstPath); err != nil {
+					g1Done <- transfer.Event{Err: err.Error()}
+					return
+				}
+			case "done":
+				g1Done <- e
+				return
+			}
+		}
+	}()
+	hostDone := make(chan transfer.Event, 1)
+	go func() {
+		for e := range hostXferEvents {
+			if e.Kind == "done" {
+				hostDone <- e
+				return
+			}
+		}
+	}()
+
+	if _, err := hostXfer.Send(ip1, srcPath); err != nil {
+		return err
+	}
+	pick := func(name string, ch chan transfer.Event) transfer.Event {
+		select {
+		case e := <-ch:
+			return e
+		case <-time.After(30 * time.Second):
+			return transfer.Event{Err: name + " 等待超时"}
+		}
+	}
+	gotGuest := pick("成员甲", g1Done)
+	gotHost := pick("主机", hostDone)
+	gotFile, ferr := os.ReadFile(dstPath)
+	check("文件传输:512KB 主机 → 成员甲完整落盘", ferr == nil && bytes.Equal(gotFile, wantFile))
+	check("文件传输:两端均确认且校验通过", gotGuest.OK && gotGuest.Err == "" && gotHost.OK && gotHost.Err == "")
 
 	host.Close()
 	fmt.Printf("全部通过(runtime %s)\n", runtime.Version())

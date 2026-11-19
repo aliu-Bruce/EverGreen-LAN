@@ -8,10 +8,18 @@
 //	      {"op":"stop"} {"op":"status"} {"op":"members"}
 //	      {"op":"stun","server":"stun.example:3478"} 从房间套接字探测公网映射
 //	      {"op":"env"} {"op":"restart-admin","exe":"…"}
+//	      {"op":"send-file","to":"10.66.7.2","path":"…"} 向成员发文件
+//	      {"op":"accept-file","transfer":"t1","path":"…"} 接受并指定保存路径
+//	      {"op":"reject-file","transfer":"t1","reason":"…"} 拒绝接收
+//	      {"op":"pick-file","title":"…"} / {"op":"pick-save","title":"…","name":"…"}
 //	应答  {"type":"ok", …} / {"type":"err","message":"…"}
 //	      {"type":"env","admin":false,"canElevate":true}
+//	      {"type":"ok","path":"…"} 文件对话框结果;取消时带 "cancel":true
 //	事件  {"type":"event","name":"room-up|room-down", …}
 //	      {"type":"event","name":"discovered","rooms":[{"name","code","peer","members"}]}
+//	      {"type":"event","name":"file-offer","transfer":"t1","peer":"…","file":"…","size":123}
+//	      {"type":"event","name":"file-progress","transfer":"t1","done":456,…}
+//	      {"type":"event","name":"file-done","transfer":"t1","ok":true,"path":"…",…}
 //	名册  {"type":"members","list":[{"name":"…","ip":"…","pub":"…"}]}
 //
 // 空闲时核心监听局域网发现端口,把同网段的房间推给界面;开房后改播报,
@@ -28,8 +36,10 @@ import (
 	"bufio"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -40,9 +50,11 @@ import (
 	"eglan/internal/crypto"
 	"eglan/internal/disc"
 	"eglan/internal/elevate"
+	"eglan/internal/filedialog"
 	"eglan/internal/firewall"
 	"eglan/internal/mesh"
 	"eglan/internal/room"
+	"eglan/internal/transfer"
 	"eglan/internal/tun"
 )
 
@@ -70,17 +82,22 @@ func DefaultName() string {
 // request 是界面发来的一条请求;缺省字段由核心补齐。
 // ID 由界面侧生成,核心原样带回,用于异步应答的关联。
 type request struct {
-	Op      string `json:"op"`
-	ID      string `json:"id"`
-	Code    string `json:"code"`
-	Name    string `json:"name"`
-	Peer    string `json:"peer"`
-	Listen  int    `json:"listen"`
-	Adapter string `json:"adapter"`
-	MTU     int    `json:"mtu"`
-	CIDR    string `json:"cidr"`
-	Exe     string `json:"exe"`
-	Server  string `json:"server"`
+	Op       string `json:"op"`
+	ID       string `json:"id"`
+	Code     string `json:"code"`
+	Name     string `json:"name"`
+	Peer     string `json:"peer"`
+	Listen   int    `json:"listen"`
+	Adapter  string `json:"adapter"`
+	MTU      int    `json:"mtu"`
+	CIDR     string `json:"cidr"`
+	Exe      string `json:"exe"`
+	Server   string `json:"server"`
+	To       string `json:"to"`
+	Path     string `json:"path"`
+	Transfer string `json:"transfer"`
+	Reason   string `json:"reason"`
+	Title    string `json:"title"`
 }
 
 // Bridge 持有房间状态机与全部连接;方法并发安全。
@@ -95,6 +112,7 @@ type Bridge struct {
 	self  string
 	host  *mesh.Host
 	guest *mesh.Guest
+	xfer  *transfer.Manager
 	dev   tun.Device
 	disc  *disc.Listener  // 空闲时的发现监听
 	discA *disc.Announcer // 开房时的信标播报
@@ -152,6 +170,16 @@ func (b *Bridge) dispatch(line string) {
 		b.opEnv(req)
 	case "restart-admin":
 		b.opRestartAdmin(req)
+	case "send-file":
+		b.opSendFile(req)
+	case "accept-file":
+		b.opAcceptFile(req)
+	case "reject-file":
+		b.opRejectFile(req)
+	case "pick-file":
+		b.opPickFile(req)
+	case "pick-save":
+		b.opPickSave(req)
 	default:
 		b.errID(req.ID, "未知操作 %q", req.Op)
 	}
@@ -317,6 +345,8 @@ func (b *Bridge) opStartHost(req request) {
 	h.Start()
 	// 房间已起:停发现监听,改由本机播报,避免自己发现自己
 	b.stopDiscoveryLocked()
+	b.xfer = transfer.New(h.SelfIP(), h.Flow(), b.transferEvent)
+	go b.xfer.Serve()
 	if a, err := disc.Announce(disc.AnnounceConfig{
 		Name:    name,
 		Code:    code,
@@ -398,7 +428,10 @@ func (b *Bridge) opJoin(req request) {
 			return
 		}
 		b.guest, b.dev, b.self, b.code, b.state = g, dev, cidr, req.Code, "joined"
+		xfer := transfer.New(g.HostIP(), g.Flow(), b.transferEvent)
+		b.xfer = xfer
 		b.mu.Unlock()
+		go xfer.Serve()
 		go b.pumpOut(dev, g)
 		go b.pumpIn(dev, g)
 		fields := map[string]any{"type": "event", "name": "room-up", "state": "joined", "self": cidr, "host": g.HostName()}
@@ -464,6 +497,150 @@ func (b *Bridge) opMembers(req request) {
 	b.send(map[string]any{"type": "members", "id": req.ID, "state": state, "list": list})
 }
 
+// opSendFile 向房间内成员发起文件传输:主机可指定任一成员,成员侧只发主机。
+func (b *Bridge) opSendFile(req request) {
+	if req.Path == "" {
+		b.errID(req.ID, "缺少要发送的文件路径")
+		return
+	}
+	b.mu.Lock()
+	mgr, state := b.xfer, b.state
+	var target net.IP
+	switch state {
+	case "hosting":
+		if ip4 := net.ParseIP(req.To).To4(); ip4 != nil {
+			for _, m := range b.host.Members() {
+				if m.IP == ip4.String() {
+					target = ip4
+					break
+				}
+			}
+		}
+	case "joined":
+		target = b.guest.HostIP()
+		if req.To != "" {
+			if ip4 := net.ParseIP(req.To).To4(); ip4 == nil || !ip4.Equal(target) {
+				target = nil
+			}
+		}
+	}
+	b.mu.Unlock()
+	if mgr == nil || (state != "hosting" && state != "joined") {
+		b.errID(req.ID, "加入房间后才能发送文件")
+		return
+	}
+	if target == nil {
+		b.errID(req.ID, "目标成员不在房间内")
+		return
+	}
+	id, err := mgr.Send(target, req.Path)
+	if err != nil {
+		b.errID(req.ID, "%v", err)
+		return
+	}
+	b.send(map[string]any{"type": "ok", "id": req.ID, "transfer": id})
+}
+
+// opAcceptFile 接受一条接收请求,并指定本机保存路径(绝对路径)。
+func (b *Bridge) opAcceptFile(req request) {
+	b.mu.Lock()
+	mgr := b.xfer
+	b.mu.Unlock()
+	if mgr == nil {
+		b.errID(req.ID, "不在房间中")
+		return
+	}
+	if req.Transfer == "" || req.Path == "" {
+		b.errID(req.ID, "accept-file 需要 transfer 与 path")
+		return
+	}
+	if err := mgr.Accept(req.Transfer, req.Path); err != nil {
+		b.errID(req.ID, "%v", err)
+		return
+	}
+	b.send(map[string]any{"type": "ok", "id": req.ID, "transfer": req.Transfer})
+}
+
+// opRejectFile 拒绝一条接收请求。
+func (b *Bridge) opRejectFile(req request) {
+	b.mu.Lock()
+	mgr := b.xfer
+	b.mu.Unlock()
+	if mgr == nil {
+		b.errID(req.ID, "不在房间中")
+		return
+	}
+	if req.Transfer == "" {
+		b.errID(req.ID, "reject-file 需要 transfer")
+		return
+	}
+	if err := mgr.Reject(req.Transfer, req.Reason); err != nil {
+		b.errID(req.ID, "%v", err)
+		return
+	}
+	b.send(map[string]any{"type": "ok", "id": req.ID, "transfer": req.Transfer})
+}
+
+// opPickFile / opPickSave 调系统原生对话框;对话框会阻塞,放到独立协程,
+// 避免期间其它请求(例如 stop)无法处理。
+func (b *Bridge) opPickFile(req request) {
+	title := req.Title
+	if title == "" {
+		title = "选择文件"
+	}
+	go func() {
+		path, err := filedialog.Open(title)
+		b.replyPick(req.ID, path, err)
+	}()
+}
+
+func (b *Bridge) opPickSave(req request) {
+	title := req.Title
+	if title == "" {
+		title = "保存文件"
+	}
+	go func() {
+		path, err := filedialog.Save(title, req.Name)
+		b.replyPick(req.ID, path, err)
+	}()
+}
+
+func (b *Bridge) replyPick(id, path string, err error) {
+	if errors.Is(err, filedialog.ErrUnsupported) {
+		b.errID(id, "当前平台不支持系统文件对话框,请手动输入完整路径")
+		return
+	}
+	if err != nil {
+		b.errID(id, "%v", err)
+		return
+	}
+	if path == "" {
+		b.send(map[string]any{"type": "ok", "id": id, "cancel": true})
+		return
+	}
+	b.send(map[string]any{"type": "ok", "id": id, "path": path})
+}
+
+// transferEvent 把传输状态转为界面事件;回调来自多个传输协程。
+func (b *Bridge) transferEvent(e transfer.Event) {
+	fields := map[string]any{
+		"type": "event", "name": "file-" + e.Kind,
+		"transfer": e.ID, "peer": e.Peer, "file": e.Name,
+		"size": e.Size, "incoming": e.Incoming,
+	}
+	if e.Kind == "progress" || e.Kind == "done" {
+		fields["done"] = e.Done
+	}
+	if e.Kind != "offer" && e.Path != "" {
+		fields["path"] = e.Path
+	}
+	if e.Kind == "done" {
+		fields["ok"] = e.OK
+		fields["error"] = e.Err
+	}
+	b.send(fields)
+}
+
 // opStun 从房间自身的 UDP 套接字探测公网映射;只有开房后套接字才存在。
 // 探测是一次用户显式动作,不做后台轮询。
 func (b *Bridge) opStun(req request) {
@@ -497,6 +674,10 @@ func (b *Bridge) roomDown(message string) {
 
 // teardownLocked 关闭房间连接与网卡,状态回 idle;须持 b.mu。
 func (b *Bridge) teardownLocked() {
+	if b.xfer != nil {
+		b.xfer.Close()
+		b.xfer = nil
+	}
 	if b.discA != nil {
 		b.discA.Close()
 		b.discA = nil

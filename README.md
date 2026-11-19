@@ -6,19 +6,20 @@ Minecraft 等游戏的 LAN 联机受广播域限制——不同子网、不同�
 EGLAN 在两台机器之间架起一条**端到端加密的虚拟局域网**:建房间、给码、加入,
 局域网里该看见的,穿过几层路由也能看见。
 
-## 当前状态:P2 已完成 · P3a 可靠流层就绪
+## 当前状态:P3b 已完成 · 内置文件传输
 
 - **房间网**:主机-成员星型拓扑;房间码作预共享密钥混入密钥派生,持码者才能入房
 - **地址与转发**:主机分配隧道地址(10.66.7.2 起),按目的地址转发单播;广播与组播向全房间洪水(游戏 LAN 发现依赖)
 - **局域网发现**:空闲实例监听 UDP 47778,主机每 2 秒广播 JSON 信标;同 WiFi 的房间自动出现在主页,点一下即可加入,无需手抄房间码
 - **公网直连**:开房后从房间套接字向 STUN 服务器探测 UDP 映射,房间页一键复制 `eglan://join/…` 邀请;异地粘贴邀请即可加入。仍无打洞、无中继:公网侧需要路由器把房间端口映射到主机
 - **隧道**:UDP 数据报直传 IP 包,一个包一帧,无分片无粘包
-- **可靠流**:加密载荷内增加流帧(首字节 `< 0x40` 与 IPv4 区分),序号、累积确认、重传与 256 KiB 滑窗;`Dial/Accept/Read/Write/Close` 双向字节流,文件传输与未来插件共用
+- **可靠流**:加密载荷内增加流帧(首字节 `< 0x40` 与 IPv4 区分),序号、累积确认、重传与 256 KiB 滑窗;`Dial/Accept/Read/Write/Close` 双向字节流
+- **文件传输**:传输页选目标、系统原生对话框选文件;报价 → 接受/拒绝 → 可靠流传输 → SHA-256 校验落盘,进度与记录就地展示。本版只做主机 ↔ 成员,成员 ↔ 成员经主机转发待成员名册下发
 - **加密**:X25519 握手 → HKDF-SHA256(房间码为盐)→ AES-GCM;计数器 nonce,接收序号只增不减抗重放
 - **虚拟网卡**:Windows(wintun.dll)/ Linux(/dev/net/tun)已接;macOS(utun)待真机接入
-- **自检**:`-test-echo` 进程内完成三人房间网全链路(分配、单播、广播、错码拒绝、防重放)、STUN 探测、发现信标收发与可靠流往返,不需要管理员
-- **界面通道**:`-ipc` 以 stdin/stdout JSON 行协议驱动核心(start-host / join / stop / status / members / stun / env / restart-admin / discovered 事件),Flutter 界面即插即用
-- 占位骨架:`internal/plugin`(插件)
+- **自检**:`-test-echo` 进程内完成三人房间网全链路(分配、单播、广播、错码拒绝、防重放)、STUN 探测、发现信标、可靠流往返与文件传输(SHA-256 校验),不需要管理员
+- **界面通道**:`-ipc` 以 stdin/stdout JSON 行协议驱动核心(start-host / join / stop / status / members / stun / env / restart-admin / send-file / accept-file / reject-file / pick-file / pick-save 与 discovered、file-offer、file-progress、file-done 事件),Flutter 界面即插即用
+- 占位骨架:`internal/plugin`(P4 插件宿主)
 
 运行与多机联机实测见 **[docs/run-p1.md](docs/run-p1.md)**。
 
@@ -30,8 +31,8 @@ EGLAN 在两台机器之间架起一条**端到端加密的虚拟局域网**:建
 | P1(已完成) | 房间码与成员管理、多成员转发 → Flutter 界面(JSON IPC 桥) |
 | P2(已完成) | 局域网发现、公网直连 |
 | P3a(已完成) | 可靠流层:序号、累积确认、重传、滑窗 |
-| P3b(下一步) | 内置文件传输 |
-| P4(规划) | 插件宿主与插件管理界面 → macOS/Android |
+| P3b(已完成) | 内置文件传输:报价确认、进度、SHA-256 校验落盘 |
+| P4(下一步) | 插件宿主与插件管理界面 → macOS/Android |
 
 ## 原则
 
@@ -55,7 +56,9 @@ core/            Go 核心
     disc/        局域网发现:信标播报与监听
     stun/        公网映射探测:最小 STUN Binding 客户端
     stream/      可靠流层:流帧、序号、累积确认、重传、滑窗
-    plugin/      阶段骨架
+    transfer/    内置文件传输:报价、接受/拒绝、SHA-256 校验落盘
+    filedialog/  系统原生打开/保存对话框(平台分文件)
+    plugin/      P4 插件宿主骨架
 assets/langs/    界面语言包(简/繁/英/日/韩/俄/西)
 docs/            设计文档与运行手册
   ui/            界面原型(温室设计语言)

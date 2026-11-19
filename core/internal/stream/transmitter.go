@@ -66,7 +66,9 @@ func (tx *transmitter) write(p []byte) error {
 			n = maxChunk
 		}
 		// 一帧之后剩余的字节数在窗口内才入队,避免超大帧击穿窗口。
-		tx.sendQ = append(tx.sendQ, Frame{Kind: FrameData, ID: tx.id, Seq: tx.nextSeq, Payload: p[:n]})
+		// 入队即拷贝:调用方 Write 返回后会复用缓冲区,
+		// 排队帧必须持有自己的字节,否则未发出的数据会被后续写入覆盖。
+		tx.sendQ = append(tx.sendQ, Frame{Kind: FrameData, ID: tx.id, Seq: tx.nextSeq, Payload: append([]byte(nil), p[:n]...)})
 		tx.nextSeq++
 		tx.qN += n
 		p = p[n:]

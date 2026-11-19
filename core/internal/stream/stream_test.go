@@ -160,6 +160,51 @@ func TestStreamBigTransfer(t *testing.T) {
 	}
 }
 
+// TestStreamReusedBuffer 调用方复用同一缓冲区逐块写入:
+// 排队中的帧必须持有自己的字节,不能被下一次写入覆盖。
+func TestStreamReusedBuffer(t *testing.T) {
+	_, a, b := newPipe(0)
+	st, err := a.session.Dial(b.ip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const chunk = 64 * 1024
+	const chunks = 12 // 768 KiB,超过发送窗口,必然有帧在排队
+	want := make([]byte, chunks*chunk)
+	done := make(chan struct{})
+	go func() {
+		scratch := make([]byte, chunk)
+		for i := 0; i < chunks; i++ {
+			for j := range scratch {
+				scratch[j] = byte(i*37 + j*11)
+			}
+			copy(want[i*chunk:], scratch)
+			if _, err := st.Write(scratch); err != nil {
+				t.Errorf("写入第 %d 块失败: %v", i, err)
+				break
+			}
+		}
+		_ = st.Close()
+		close(done)
+	}()
+	st2, err := b.session.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]byte, len(want))
+	if err := readFull(st2, got); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	if !bytes.Equal(got, want) {
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("复用缓冲区数据被覆盖: 首个差异在偏移 %d", i)
+			}
+		}
+	}
+}
+
 // TestStreamDropout 随机丢包:0.2 重传后完整。
 func TestStreamDropout(t *testing.T) {
 	_, a, b := newPipe(0.2)

@@ -223,28 +223,31 @@ class _EgDropdownState<T> extends State<EgDropdown<T>> with SingleTickerProvider
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: c.line2)),
                   elevation: 0,
                   shadowColor: Colors.transparent,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: c.bigShadow,
-                    ),
-                    padding: const EdgeInsets.all(5),
-                    width: 168,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final (value, label) in widget.items)
-                          _DdlOpt(
-                            c: c,
-                            label: label,
-                            selected: value == widget.value,
-                            onTap: () {
-                              widget.onChanged(value);
-                              _close();
-                            },
-                          ),
-                      ],
+                  // 菜单宽度随内容伸缩:隧道地址这类长标签不换行也不截断。
+                  child: IntrinsicWidth(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: c.bigShadow,
+                      ),
+                      padding: const EdgeInsets.all(5),
+                      constraints: const BoxConstraints(minWidth: 168, maxWidth: 360),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final (value, label) in widget.items)
+                            _DdlOpt(
+                              c: c,
+                              label: label,
+                              selected: value == widget.value,
+                              onTap: () {
+                                widget.onChanged(value);
+                                _close();
+                              },
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -265,13 +268,19 @@ class _EgDropdownState<T> extends State<EgDropdown<T>> with SingleTickerProvider
               (states) => c.text.withValues(alpha: states.contains(WidgetState.pressed) ? 0.12 : states.contains(WidgetState.hovered) ? 0.08 : 0),
             ),
             child: Container(
-              constraints: const BoxConstraints(minWidth: 112),
+              constraints: const BoxConstraints(minWidth: 112, maxWidth: 320),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(widget.value == null ? '' : widget.items.firstWhere((it) => it.$1 == widget.value).$2,
-                      style: egText(c, size: 12.5, height: 1.4)),
+                  Flexible(
+                    child: Text(
+                      widget.value == null ? '' : widget.items.firstWhere((it) => it.$1 == widget.value).$2,
+                      style: egText(c, size: 12.5, height: 1.4),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   const SizedBox(width: 10),
                   AnimatedRotation(
                     turns: _open ? 0.5 : 0,
@@ -309,7 +318,7 @@ class _DdlOpt extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          child: Text(label, style: egText(c, size: 12.5, color: selected ? c.acc : c.muted, weight: selected ? FontWeight.w600 : FontWeight.w400, height: 1.4)),
+          child: Text(label, style: egText(c, size: 12.5, color: selected ? c.acc : c.muted, weight: selected ? FontWeight.w600 : FontWeight.w400, height: 1.4), maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
       ),
     );

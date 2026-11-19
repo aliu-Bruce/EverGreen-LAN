@@ -309,11 +309,12 @@ class _RailState extends State<Rail> with SingleTickerProviderStateMixin {
     final t = (k) => app.langs.t(k);
     final page = widget.page;
     final onGo = widget.onGo;
+    final incoming = app.transfers.where((t) => t.awaiting).length;
 
     final items = <(ShellPage, IconData, String, String)>[
       (ShellPage.home, Icons.home_outlined, t('nav.home'), ''),
       (ShellPage.room, Icons.group_outlined, t('nav.room'), app.inRoom ? '${app.memberCount}/8' : ''),
-      (ShellPage.transfer, Icons.swap_horiz, t('nav.transfer'), ''),
+      (ShellPage.transfer, Icons.swap_horiz, t('nav.transfer'), incoming > 0 ? '$incoming' : ''),
       (ShellPage.settings, Icons.settings_outlined, t('nav.settings'), ''),
     ];
 
@@ -621,11 +622,12 @@ class _TopBarState extends State<TopBar> with SingleTickerProviderStateMixin {
     final t = (k) => app.langs.t(k);
     final page = widget.page;
     final onGo = widget.onGo;
+    final incoming = app.transfers.where((t) => t.awaiting).length;
 
     final tabs = <(ShellPage, String, String)>[
       (ShellPage.home, t('nav.home'), ''),
       (ShellPage.room, t('nav.room'), app.inRoom ? '${app.memberCount}/8' : ''),
-      (ShellPage.transfer, t('nav.transfer'), ''),
+      (ShellPage.transfer, t('nav.transfer'), incoming > 0 ? '$incoming' : ''),
       (ShellPage.settings, t('nav.settings'), ''),
     ];
 

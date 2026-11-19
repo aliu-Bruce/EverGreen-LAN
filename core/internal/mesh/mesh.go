@@ -397,6 +397,9 @@ func (d hostFlow) Deliver(dst net.IP, data []byte) error {
 // Flow 返回主机侧的可靠流集合,供文件传输与插件宿主使用。
 func (h *Host) Flow() *stream.Session { return h.flow }
 
+// SelfIP 返回主机在房间内的隧道地址。
+func (h *Host) SelfIP() net.IP { return append(net.IP(nil), h.selfIP...) }
+
 // Start 启动接收循环,直到 Close 或套接字出错。
 func (h *Host) Start() {
 	go h.loop()

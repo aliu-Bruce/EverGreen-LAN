@@ -28,11 +28,13 @@ type Delivery interface {
 //
 // 流号由发起方分配;双方同时发起时,随机高 16 位让两侧号段基本不重叠。
 type Session struct {
-	t        Delivery
-	mu       sync.Mutex
-	streams  map[uint32]*streamInstance
-	nextID   uint32
-	acceptCh chan *streamInstance
+	t         Delivery
+	mu        sync.Mutex
+	streams   map[uint32]*streamInstance
+	nextID    uint32
+	acceptCh  chan *streamInstance
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func NewSession(t Delivery) *Session {
@@ -43,6 +45,7 @@ func NewSession(t Delivery) *Session {
 		streams:  map[uint32]*streamInstance{},
 		nextID:   binary.BigEndian.Uint32(seed[:]) & 0xFFFF0000,
 		acceptCh: make(chan *streamInstance, 16),
+		done:     make(chan struct{}),
 	}
 }
 
@@ -80,11 +83,13 @@ func (s *Session) Dial(peer net.IP) (Stream, error) {
 	return st, nil
 }
 
-// Accept 阻塞等待对端建流。超时返回 ErrNoRoute。
+// Accept 阻塞等待对端建流。会话关闭或超时返回错误。
 func (s *Session) Accept() (Stream, error) {
 	select {
 	case st := <-s.acceptCh:
 		return st, nil
+	case <-s.done:
+		return nil, ErrClosed
 	case <-time.After(acceptTimeout):
 		return nil, ErrNoRoute
 	}
@@ -141,6 +146,9 @@ func (s *Session) Dispatch(from net.IP, payload []byte) {
 
 // Close 关闭全部流并清空登记;不等待对端应答,用于房间拆除。
 func (s *Session) Close() {
+	s.closeOnce.Do(func() {
+		close(s.done)
+	})
 	s.mu.Lock()
 	list := make([]*streamInstance, 0, len(s.streams))
 	for _, st := range s.streams {

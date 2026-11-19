@@ -18,6 +18,39 @@ class JoinLine {
   JoinLine(this.kind, this.text);
 }
 
+// 一条文件传输的界面状态:报价 → 进行中 → 完成/失败。
+enum TransferPhase { offer, active, done, failed }
+
+class TransferTask {
+  final String id;
+  final String peer; // 对端隧道 IP
+  final String name; // 文件名(仅展示)
+  final int size;
+  final bool incoming;
+  int done;
+  TransferPhase phase;
+  bool ok;
+  String? error;
+  String? path;
+
+  TransferTask({
+    required this.id,
+    required this.peer,
+    required this.name,
+    required this.size,
+    required this.incoming,
+    this.done = 0,
+    this.phase = TransferPhase.active,
+    this.ok = false,
+    this.error,
+    this.path,
+  });
+
+  bool get finished => phase == TransferPhase.done || phase == TransferPhase.failed;
+  bool get awaiting => phase == TransferPhase.offer;
+  double get progress => size <= 0 ? 0 : (done / size).clamp(0.0, 1.0);
+}
+
 class AppState extends ChangeNotifier {
   final Prefs prefs = Prefs();
   final EgLangs langs = EgLangs();
@@ -35,6 +68,9 @@ class AppState extends ChangeNotifier {
   String? selfIp;    // 本机虚拟地址
   String? hostName;  // 房主机显示名(成员侧)
   List<Map<String, dynamic>> members = [];
+
+  // 文件传输:本房间内的待接收报价、进行中与最近记录。
+  List<TransferTask> transfers = [];
 
   // 公网直连:开房后核心给出局域网地址;探测给出 NAT 映射地址。
   List<String> lanAddrs = [];
@@ -284,6 +320,179 @@ class AppState extends ChangeNotifier {
     } on IpcError catch (_) {}
   }
 
+  // ---- 文件传输 ----
+  // 系统原生对话框;取消返回 null。超时给足,用户可能慢慢找文件。
+  Future<String?> pickFile() async {
+    final ack = await bridge.request({
+      'op': 'pick-file',
+      'title': langs.t('tr.pickTitle'),
+    }, timeout: const Duration(minutes: 5));
+    if (ack['cancel'] == true) return null;
+    final path = (ack['path'] as String?) ?? '';
+    return path.isEmpty ? null : path;
+  }
+
+  Future<String?> pickSave(String suggestedName) async {
+    final ack = await bridge.request({
+      'op': 'pick-save',
+      'title': langs.t('tr.saveTitle'),
+      'name': suggestedName,
+    }, timeout: const Duration(minutes: 5));
+    if (ack['cancel'] == true) return null;
+    final path = (ack['path'] as String?) ?? '';
+    return path.isEmpty ? null : path;
+  }
+
+  // 发送文件;返回错误原文,null 表示已交给核心。
+  Future<String?> sendFile(String path, {String? to}) async {
+    if (!inRoom) return '尚未进入房间';
+    var size = 0;
+    try {
+      size = await File(path).length();
+    } catch (_) {}
+    try {
+      final ack = await bridge.request({
+        'op': 'send-file',
+        'path': path,
+        if (to != null && to.isNotEmpty) 'to': to,
+      }, timeout: const Duration(seconds: 15));
+      final id = (ack['transfer'] as String?) ?? '';
+      if (id.isEmpty) return '核心没有返回传输编号';
+      _addTransfer(TransferTask(
+        id: id,
+        peer: to ?? (room == RoomState.joined ? hostAddr : ''),
+        name: _baseName(path),
+        size: size,
+        incoming: false,
+      ));
+      notifyListeners();
+      return null;
+    } on IpcError catch (e) {
+      return e.message;
+    }
+  }
+
+  // 接受报价:先弹保存对话框,再回核心。取消不算错误。
+  Future<String?> acceptTransfer(TransferTask t) async {
+    String? path;
+    try {
+      path = await pickSave(t.name);
+    } on IpcError catch (e) {
+      return e.message;
+    }
+    if (path == null) return null;
+    try {
+      await bridge.request({
+        'op': 'accept-file',
+        'transfer': t.id,
+        'path': path,
+      }, timeout: const Duration(seconds: 10));
+      t.phase = TransferPhase.active;
+      t.path = path;
+      notifyListeners();
+      return null;
+    } on IpcError catch (e) {
+      return e.message;
+    }
+  }
+
+  Future<String?> rejectTransfer(TransferTask t) async {
+    try {
+      await bridge.request({
+        'op': 'reject-file',
+        'transfer': t.id,
+      }, timeout: const Duration(seconds: 10));
+      transfers.remove(t);
+      notifyListeners();
+      return null;
+    } on IpcError catch (e) {
+      return e.message;
+    }
+  }
+
+  void clearFinishedTransfers() {
+    transfers.removeWhere((t) => t.finished);
+    notifyListeners();
+  }
+
+  // 对端显示名:主机看成员名册,成员看房主名;找不到时退回 IP。
+  String peerLabel(String ip) {
+    if (ip.isEmpty) return '—';
+    if (ip == selfIp) return prefs.name;
+    if (room == RoomState.joined && ip == hostAddr) return hostName ?? ip;
+    for (final m in members) {
+      if ((m['ip'] as String?) == ip) return (m['name'] as String?) ?? ip;
+    }
+    return ip;
+  }
+
+  TransferTask? _transferOf(String id) {
+    for (final t in transfers) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  void _addTransfer(TransferTask t) {
+    transfers.insert(0, t);
+    // 记录上限:优先淘汰最旧的已结束项,不动进行中的传输。
+    if (transfers.length > 60) {
+      for (var i = transfers.length - 1; i >= 0 && transfers.length > 60; i--) {
+        if (transfers[i].finished) transfers.removeAt(i);
+      }
+    }
+  }
+
+  // 事件可能先于发送应答到达(接收方已在等),缺任务时按事件字段补建。
+  TransferTask _adoptTransfer(String id, Map<String, dynamic> msg) {
+    final t = TransferTask(
+      id: id,
+      peer: (msg['peer'] as String?) ?? '',
+      name: (msg['file'] as String?) ?? '',
+      size: (msg['size'] as num?)?.toInt() ?? 0,
+      incoming: msg['incoming'] == true,
+    );
+    _addTransfer(t);
+    return t;
+  }
+
+  void _applyTransferEvent(String name, Map<String, dynamic> msg) {
+    if (!inRoom) return; // 离房后迟到的进度事件不再进列表
+    final id = (msg['transfer'] as String?) ?? '';
+    if (id.isEmpty) return;
+    switch (name) {
+      case 'file-offer':
+        if (_transferOf(id) == null) {
+          _addTransfer(TransferTask(
+            id: id,
+            peer: (msg['peer'] as String?) ?? '',
+            name: (msg['file'] as String?) ?? '',
+            size: (msg['size'] as num?)?.toInt() ?? 0,
+            incoming: true,
+            phase: TransferPhase.offer,
+          ));
+        }
+      case 'file-progress':
+        final t = _transferOf(id) ?? _adoptTransfer(id, msg);
+        t.done = (msg['done'] as num?)?.toInt() ?? t.done;
+        if (t.phase == TransferPhase.offer) t.phase = TransferPhase.active;
+      case 'file-done':
+        final t = _transferOf(id) ?? _adoptTransfer(id, msg);
+        t.done = (msg['done'] as num?)?.toInt() ?? t.size;
+        t.ok = msg['ok'] == true;
+        final err = (msg['error'] as String?) ?? '';
+        t.error = err.isEmpty ? null : err;
+        final path = (msg['path'] as String?) ?? '';
+        if (path.isNotEmpty) t.path = path;
+        t.phase = t.ok ? TransferPhase.done : TransferPhase.failed;
+    }
+  }
+
+  String _baseName(String path) {
+    final i = path.lastIndexOf(RegExp(r'[\\/]'));
+    return i < 0 ? path : path.substring(i + 1);
+  }
+
   // ---- IPC 消息分流 ----
   void _onMessage(Map<String, dynamic> msg) {
     final type = (msg['type'] as String?) ?? '';
@@ -339,6 +548,8 @@ class AppState extends ChangeNotifier {
           if (message.isNotEmpty) joinError = message;
         } else if (name == 'discovered') {
           discovered = ((msg['rooms'] as List<dynamic>?) ?? []).cast<Map<String, dynamic>>();
+        } else if (name == 'file-offer' || name == 'file-progress' || name == 'file-done') {
+          _applyTransferEvent(name, msg);
         }
       case 'env':
         admin = msg['admin'] == true;
@@ -377,6 +588,7 @@ class AppState extends ChangeNotifier {
       selfIp = null;
       hostName = null;
       members = [];
+      transfers = [];
       joinLog = [];
       joinError = null;
       discovered = [];
