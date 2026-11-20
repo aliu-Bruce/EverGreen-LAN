@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/widgets.dart';
 
 import '../i18n.dart';
+import 'appearance.dart';
 import 'ipc.dart';
 import 'prefs.dart';
 
@@ -57,6 +58,8 @@ class AppState extends ChangeNotifier {
   final EgLangs langs = EgLangs();
   final IpcBridge bridge = IpcBridge();
 
+  // 外观参数(主色/字体/字号/圆角),直接由设置页控件编辑。
+  AppAppearance appearance = const AppAppearance();
   bool bridgeReady = false;
   String? bridgeProblem;
 
@@ -101,6 +104,7 @@ class AppState extends ChangeNotifier {
   // ---- 启动 ----
   Future<void> init() async {
     prefs.loadSync();
+    appearance = AppAppearance.fromMap(prefs.appearance);
     await langs.load();
     final saved = prefs.lang;
     langs.set(saved.isNotEmpty ? saved : EgLangs.detectSystem());
@@ -163,6 +167,16 @@ class AppState extends ChangeNotifier {
     unawaited(prefs.save());
     notifyListeners();
   }
+
+  // 外观即时生效并持久化;没有主题选择/导入概念。
+  void setAppearance(AppAppearance value) {
+    appearance = value;
+    prefs.appearance = value.toJson();
+    unawaited(prefs.save());
+    notifyListeners();
+  }
+
+  void resetAppearance() => setAppearance(const AppAppearance());
 
   void setName(String name) {
     final n = name.trim();
@@ -418,10 +432,10 @@ class AppState extends ChangeNotifier {
 
   // ---- 文件传输 ----
   // 系统原生对话框;取消返回 null。超时给足,用户可能慢慢找文件。
-  Future<String?> pickFile() async {
+  Future<String?> pickFile({String? title}) async {
     final ack = await bridge.request({
       'op': 'pick-file',
-      'title': langs.t('tr.pickTitle'),
+      'title': title ?? langs.t('tr.pickTitle'),
     }, timeout: const Duration(minutes: 5));
     if (ack['cancel'] == true) return null;
     final path = (ack['path'] as String?) ?? '';

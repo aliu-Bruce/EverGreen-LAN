@@ -18,6 +18,8 @@ class Prefs {
   int mtu = 1400;
   String stun = defaultStun;
   bool onboarded = false;
+  // 外观参数(主色/字体/字号/圆角);旧主题字段已废弃,启动后会被清理。
+  Map<String, dynamic>? appearance;
 
   File? _file;
 
@@ -47,6 +49,8 @@ class Prefs {
       final savedStun = (obj['stun'] as String?)?.trim() ?? '';
       stun = savedStun.isEmpty || savedStun == legacyStun ? defaultStun : savedStun;
       onboarded = obj['onboarded'] == true;
+      final a = obj['appearance'];
+      appearance = a is Map ? Map<String, dynamic>.from(a) : null;
     } catch (_) {}
   }
 
@@ -65,6 +69,7 @@ class Prefs {
         'mtu': mtu,
         'stun': stun,
         'onboarded': onboarded,
+        if (appearance != null) 'appearance': appearance,
       }));
     } catch (_) {}
   }

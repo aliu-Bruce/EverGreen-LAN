@@ -36,15 +36,21 @@ class EgApp extends StatelessWidget {
           // MaterialApp 之上没有 MediaQuery,直接读平台侧的亮度。
           EgThemeMode.system => WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark,
         };
-        final tokens = dark ? EgColors.dark : EgColors.light;
+        final appearance = app.appearance;
+        final lightTokens = appearance.colorsFor(Brightness.light);
+        final darkTokens = appearance.colorsFor(Brightness.dark);
+        final tokens = dark ? darkTokens : lightTokens;
         return MaterialApp(
           title: 'EverGreen LAN',
           debugShowCheckedModeBanner: false,
-          theme: egTheme(EgColors.light),
-          darkTheme: egTheme(EgColors.dark),
+          theme: egTheme(lightTokens),
+          darkTheme: egTheme(darkTokens),
           themeMode: dark ? ThemeMode.dark : ThemeMode.light,
-          builder: (context, child) => Eg(
-            c: tokens,
+          // 与自定义令牌的过渡同速,系统控件与自绘控件一起完成换色。
+          themeAnimationDuration: const Duration(milliseconds: 420),
+          themeAnimationCurve: const Cubic(0.2, 0, 0, 1),
+          builder: (context, child) => EgMotion(
+            colors: tokens,
             child: AppStateScope(notifier: app, child: child ?? const SizedBox.shrink()),
           ),
           home: const Shell(),
@@ -292,8 +298,22 @@ class _PageSwitcher extends StatelessWidget {
       ShellPage.settings => const SettingsPage(),
     };
     return AnimatedSwitcher(
-      duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 140),
-      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+      duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, anim) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween(begin: const Offset(0, 0.03), end: Offset.zero).animate(curved),
+            child: ScaleTransition(
+              scale: Tween(begin: 0.985, end: 1.0).animate(curved),
+              child: child,
+            ),
+          ),
+        );
+      },
       layoutBuilder: (currentChild, previousChildren) => Stack(
         alignment: Alignment.topCenter,
         children: [...previousChildren, if (currentChild != null) currentChild],

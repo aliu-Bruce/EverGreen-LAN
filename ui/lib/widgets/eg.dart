@@ -24,6 +24,7 @@ class EgButton extends StatefulWidget {
 
 class _EgButtonState extends State<EgButton> {
   bool _hover = false;
+  bool _down = false;
 
   @override
   Widget build(BuildContext context) {
@@ -35,40 +36,49 @@ class _EgButtonState extends State<EgButton> {
       EgBtnKind.ghost => (c.panel, c.text, c.line2),
       EgBtnKind.danger => (Colors.transparent, c.bad, c.line2),
     };
-    final pad = widget.small ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6) : const EdgeInsets.symmetric(horizontal: 16, vertical: 9);
-    final radius = widget.small ? 10.0 : 12.0;
+    final pad = widget.small ? const EdgeInsets.symmetric(horizontal: 14, vertical: 6) : const EdgeInsets.symmetric(horizontal: 20, vertical: 9);
+    // M3 Expressive:按钮一律药丸形。
+    const radius = 100.0;
     return Opacity(
       opacity: enabled ? 1 : 0.45,
       child: MouseRegion(
         cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          transform: Matrix4.translationValues(0, enabled && _hover ? -1 : 0, 0),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: enabled && widget.kind == EgBtnKind.primary ? c.accShadow : (widget.kind == EgBtnKind.ghost ? c.panelShadow : null),
-          ),
-          child: Material(
-            color: bg,
-            shape: RoundedRectangleBorder(
+        child: AnimatedScale(
+          scale: enabled && _down ? 0.955 : 1,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            transform: Matrix4.translationValues(0, enabled && _hover ? -1.5 : 0, 0),
+            decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(radius),
-              side: BorderSide(color: border),
+              boxShadow: enabled && widget.kind == EgBtnKind.primary ? c.accShadow : (widget.kind == EgBtnKind.ghost ? c.panelShadow : null),
             ),
-            child: InkWell(
-              onTap: widget.onPressed,
-              borderRadius: BorderRadius.circular(radius),
-              overlayColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.pressed)) return fg.withValues(alpha: 0.12);
-                if (states.contains(WidgetState.hovered)) return fg.withValues(alpha: 0.08);
-                return Colors.transparent;
-              }),
-              child: Padding(
-                padding: pad,
-                child: Text(
-                  widget.label,
-                  style: egText(c, size: widget.small ? 12 : 13, color: fg, weight: FontWeight.w600, height: 1.3),
+            child: Material(
+              color: bg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(radius),
+                side: BorderSide(color: border),
+              ),
+              child: InkWell(
+                onTap: widget.onPressed,
+                borderRadius: BorderRadius.circular(radius),
+                onTapDown: enabled ? (_) => setState(() => _down = true) : null,
+                onTapUp: enabled ? (_) => setState(() => _down = false) : null,
+                onTapCancel: enabled ? () => setState(() => _down = false) : null,
+                overlayColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.pressed)) return fg.withValues(alpha: 0.12);
+                  if (states.contains(WidgetState.hovered)) return fg.withValues(alpha: 0.08);
+                  return Colors.transparent;
+                }),
+                child: Padding(
+                  padding: pad,
+                  child: Text(
+                    widget.label,
+                    style: egText(c, size: widget.small ? 12 : 13.5, color: fg, weight: FontWeight.w700, height: 1.3),
+                  ),
                 ),
               ),
             ),
@@ -98,9 +108,8 @@ class _EgSegState<T> extends State<EgSeg<T>> {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: c.panel2,
-        border: Border.all(color: c.line),
-        borderRadius: BorderRadius.circular(12),
+        color: c.accDim,
+        borderRadius: BorderRadius.circular(100),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -119,7 +128,7 @@ class _EgSegState<T> extends State<EgSeg<T>> {
   }
 }
 
-class _SegBtn extends StatelessWidget {
+class _SegBtn extends StatefulWidget {
   final EgColors c;
   final String label;
   final bool selected;
@@ -128,22 +137,53 @@ class _SegBtn extends StatelessWidget {
   const _SegBtn({required this.c, required this.label, required this.selected, required this.first, required this.onTap});
 
   @override
+  State<_SegBtn> createState() => _SegBtnState();
+}
+
+class _SegBtnState extends State<_SegBtn> {
+  bool _hover = false;
+  bool _down = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: selected ? c.panel : Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(9),
-        side: BorderSide(color: selected ? c.line2 : Colors.transparent),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(9),
-        overlayColor: WidgetStateProperty.resolveWith(
-          (states) => c.text.withValues(alpha: states.contains(WidgetState.pressed) ? 0.12 : states.contains(WidgetState.hovered) ? 0.08 : 0),
-        ),
-        child: Padding(
-          padding: selected ? const EdgeInsets.symmetric(horizontal: 13, vertical: 5) : const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-          child: Text(label, style: egText(c, size: 12, weight: FontWeight.w600, color: selected ? c.text : c.muted, height: 1.4)),
+    final c = widget.c;
+    final selected = widget.selected;
+    final bg = selected ? c.acc : (_hover ? c.panel : Colors.transparent);
+    final fg = selected ? c.accInk : (_hover ? c.text : c.muted);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedScale(
+        scale: _down ? 0.94 : 1,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutBack,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(100)),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: BorderRadius.circular(100),
+              onTapDown: (_) => setState(() => _down = true),
+              onTapUp: (_) => setState(() => _down = false),
+              onTapCancel: () => setState(() => _down = false),
+              overlayColor: WidgetStateProperty.resolveWith(
+                (states) => (selected ? c.accInk : c.text).withValues(alpha: states.contains(WidgetState.pressed) ? 0.12 : states.contains(WidgetState.hovered) ? 0.08 : 0),
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: selected ? 15 : 16, vertical: 6),
+                child: AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  style: egText(c, size: 12, weight: selected ? FontWeight.w700 : FontWeight.w600, color: fg, height: 1.4),
+                  child: Text(widget.label),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -164,6 +204,7 @@ class EgDropdown<T> extends StatefulWidget {
 
 class _EgDropdownState<T> extends State<EgDropdown<T>> with SingleTickerProviderStateMixin {
   final _controller = OverlayPortalController();
+  final _triggerKey = GlobalKey();
   late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 180));
   final _link = LayerLink();
   bool get _open => _controller.isShowing;
@@ -196,6 +237,17 @@ class _EgDropdownState<T> extends State<EgDropdown<T>> with SingleTickerProvider
       controller: _controller,
       overlayChildBuilder: (context) {
         final curve = CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic);
+        // 触发器在屏幕下方时菜单改为向上展开,并限高+可滚动,避免被窗口底部截断。
+        final mq = MediaQuery.maybeOf(context);
+        final view = View.of(context);
+        final screen = mq?.size ?? view.physicalSize / view.devicePixelRatio;
+        final box = _triggerKey.currentContext?.findRenderObject() as RenderBox?;
+        final origin = box?.localToGlobal(Offset.zero) ?? Offset.zero;
+        final size = box?.size ?? Size.zero;
+        final below = screen.height - (origin.dy + size.height) - 14;
+        final above = origin.dy - 14;
+        final openUp = below < 300 && above > below;
+        final maxHeight = (openUp ? above : below).clamp(120.0, 360.0);
         return Stack(
           children: [
             // 全屏屏障:点菜单外任意处收起;菜单叠在其上,选项点击不受影响。
@@ -206,28 +258,31 @@ class _EgDropdownState<T> extends State<EgDropdown<T>> with SingleTickerProvider
             ),
             CompositedTransformFollower(
               link: _link,
-              targetAnchor: Alignment.bottomLeft,
-              followerAnchor: Alignment.topLeft,
-              offset: const Offset(0, 6),
-              child: AnimatedBuilder(
-                animation: curve,
-                builder: (context, child) => Opacity(
-                  opacity: curve.value,
-                  child: Transform.translate(
-                    offset: Offset(0, (1 - curve.value) * -6),
-                    child: child,
-                  ),
-                ),
-                child: Material(
+              targetAnchor: openUp ? Alignment.topLeft : Alignment.bottomLeft,
+              followerAnchor: openUp ? Alignment.bottomLeft : Alignment.topLeft,
+              offset: openUp ? const Offset(0, -6) : const Offset(0, 6),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                child: SingleChildScrollView(
+                  child: AnimatedBuilder(
+                    animation: curve,
+                    builder: (context, child) => Opacity(
+                      opacity: curve.value,
+                      child: Transform.translate(
+                        offset: Offset(0, (1 - curve.value) * (openUp ? 6 : -6)),
+                        child: child,
+                      ),
+                    ),
+                    child: Material(
                   color: c.panel,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: c.line2)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: c.line2)),
                   elevation: 0,
                   shadowColor: Colors.transparent,
                   // 菜单宽度随内容伸缩:隧道地址这类长标签不换行也不截断。
                   child: IntrinsicWidth(
                     child: Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(20),
                         boxShadow: c.bigShadow,
                       ),
                       padding: const EdgeInsets.all(5),
@@ -251,6 +306,8 @@ class _EgDropdownState<T> extends State<EgDropdown<T>> with SingleTickerProvider
                     ),
                   ),
                 ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -259,11 +316,12 @@ class _EgDropdownState<T> extends State<EgDropdown<T>> with SingleTickerProvider
       child: CompositedTransformTarget(
         link: _link,
         child: Material(
+          key: _triggerKey,
           color: c.panel2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: c.line2)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100), side: BorderSide(color: c.line2)),
           child: InkWell(
             onTap: _toggle,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(100),
             overlayColor: WidgetStateProperty.resolveWith(
               (states) => c.text.withValues(alpha: states.contains(WidgetState.pressed) ? 0.12 : states.contains(WidgetState.hovered) ? 0.08 : 0),
             ),
@@ -309,10 +367,10 @@ class _DdlOpt extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: selected ? c.accDim : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(100),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(100),
         overlayColor: WidgetStateProperty.resolveWith(
           (states) => c.text.withValues(alpha: states.contains(WidgetState.pressed) ? 0.12 : states.contains(WidgetState.hovered) ? 0.08 : 0),
         ),
@@ -408,7 +466,7 @@ class EgPanel extends StatelessWidget {
   final Widget child;
   final Color? border;
   final double radius;
-  const EgPanel({super.key, required this.child, this.border, this.radius = 16});
+  const EgPanel({super.key, required this.child, this.border, this.radius = 24});
 
   @override
   Widget build(BuildContext context) {
@@ -416,7 +474,7 @@ class EgPanel extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: c.panel,
-        border: Border.all(color: border ?? c.line),
+        border: border == null ? null : Border.all(color: border!),
         borderRadius: BorderRadius.circular(radius),
         boxShadow: c.panelShadow,
       ),
@@ -738,12 +796,17 @@ class EgInput extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final FocusNode? focusNode;
-  const EgInput({super.key, required this.controller, this.hint, this.mono = false, this.center = false, this.width = 86, this.maxLength, this.formatters, this.onChanged, this.onSubmitted, this.focusNode});
+  final bool readOnly;
+  final double? fontSize;
+  final FontWeight? weight;
+  const EgInput({super.key, required this.controller, this.hint, this.mono = false, this.center = false, this.width = 86, this.maxLength, this.formatters, this.onChanged, this.onSubmitted, this.focusNode, this.readOnly = false, this.fontSize, this.weight});
 
   @override
   Widget build(BuildContext context) {
     final c = Eg.of(context).c;
-    final style = mono ? egMono(c, size: 12.5, color: c.text) : egText(c, size: 12.5, color: c.text, height: 1.4);
+    final style = mono
+        ? egMono(c, size: fontSize ?? 12.5, color: c.text, weight: weight)
+        : egText(c, size: fontSize ?? 12.5, color: c.text, weight: weight, height: 1.4);
     return SizedBox(
       width: width,
       child: TextField(
@@ -755,22 +818,23 @@ class EgInput extends StatelessWidget {
         inputFormatters: formatters,
         style: style,
         textAlign: center ? TextAlign.center : TextAlign.left,
+        readOnly: readOnly,
         cursorColor: c.acc,
         decoration: InputDecoration(
           isDense: true,
           counterText: '',
           hintText: hint,
           hintStyle: egMono(c, size: 12.5, color: c.faint),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           filled: true,
           fillColor: c.panel2,
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(100),
             borderSide: BorderSide(color: c.line2),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: c.acc),
+            borderRadius: BorderRadius.circular(100),
+            borderSide: BorderSide(color: c.acc, width: 1.5),
           ),
         ),
       ),
@@ -791,12 +855,12 @@ class EgSkinDialog extends StatelessWidget {
     final c = Eg.of(context).c;
     return Dialog(
       backgroundColor: c.panel,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: BorderSide(color: c.line2)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
       child: Container(
         width: 420,
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(30),
           boxShadow: c.bigShadow,
         ),
         child: Column(

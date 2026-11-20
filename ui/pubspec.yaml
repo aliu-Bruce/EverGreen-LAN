@@ -25,12 +25,9 @@ flutter:
     - assets/icon/
 
   # 字体全部为 SIL OFL 授权;汉字与拉丁同角色分流见 lib/theme.dart。
-  # 可变字体(Fraunces/Hanken/JetBrains Mono)取默认实例,权重由
-  # TextStyle.fontVariations 施加 wght 轴;Noto SC 为静态字重直接声明。
+  # 全无衬线:标题与正文共用 Hanken Grotesk 可变字体,
+  # 权重由 TextStyle.fontVariations 施加 wght 轴;Noto SC 为静态字重直接声明。
   fonts:
-    - family: Fraunces
-      fonts:
-        - asset: assets/fonts/Fraunces-Variable.ttf
     - family: Hanken Grotesk
       fonts:
         - asset: assets/fonts/HankenGrotesk-Variable.ttf
@@ -41,7 +38,3 @@ flutter:
       fonts:
         - asset: assets/fonts/zh/NotoSansSC-Regular.otf
           weight: 400
-    - family: Noto Serif SC
-      fonts:
-        - asset: assets/fonts/zh/NotoSerifSC-SemiBold.otf
-          weight: 600

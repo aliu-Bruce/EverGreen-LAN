@@ -19,7 +19,7 @@ class StaggerIn extends StatefulWidget {
 class _StaggerInState extends State<StaggerIn> with SingleTickerProviderStateMixin {
   late final AnimationController _ctl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 560),
+    duration: const Duration(milliseconds: 540),
   );
   bool _started = false;
 
@@ -76,19 +76,22 @@ class _StaggerChild extends StatelessWidget {
     final reduced = MediaQuery.disableAnimationsOf(context);
     if (reduced) return child;
     final start = (index * 0.06).clamp(0.0, 0.6);
-    final curve = CurvedAnimation(
-      parent: controller,
-      curve: Interval(start, 1.0, curve: Curves.easeOutCubic),
-    );
     return AnimatedBuilder(
-      animation: curve,
+      animation: controller,
       builder: (context, _) {
-        final v = curve.value;
+        final raw = ((controller.value - start) / (1 - start)).clamp(0.0, 1.0);
+        // 位移走 easeOutCubic,缩放走 easeOutBack:落位时有一点点弹性。
+        final move = Curves.easeOutCubic.transform(raw);
+        final pop = Curves.easeOutBack.transform(raw);
         return Opacity(
-          opacity: v,
+          opacity: move,
           child: Transform.translate(
-            offset: Offset(0, (1 - v) * 10),
-            child: child,
+            offset: Offset(0, (1 - move) * 18),
+            child: Transform.scale(
+              scale: 0.975 + 0.025 * pop,
+              alignment: Alignment.topCenter,
+              child: child,
+            ),
           ),
         );
       },
