@@ -17,7 +17,7 @@ EGLAN 在两台机器之间架起一条**端到端加密的虚拟局域网**:建
 - **文件传输**:传输页选目标、系统原生对话框选文件;报价 → 接受/拒绝 → 可靠流传输 → SHA-256 校验落盘,进度与记录就地展示。本版只做主机 ↔ 成员,成员 ↔ 成员经主机转发待成员名册下发
 - **外观设置**:设置页「外观」分类用紧凑分组头承载主色花瓣色标与「恢复默认」;可编辑主色(调色盘按钮+Hex 输入双向同步、彩虹预设)、正文/等宽字体、全局加粗、字号与圆角;全无衬线字体显示标题不可改;Material You(fidelity) 从主色推出浅/深配色,换色 420ms 平滑过渡;改动即时生效并持久化,统一「恢复默认」;字号整体放大、语言下拉在屏幕底部可滚动且向上展开
 - **加密**:X25519 握手 → HKDF-SHA256(房间码为盐)→ AES-GCM;计数器 nonce,接收序号只增不减抗重放
-- **虚拟网卡**:Windows(wintun.dll)/ Linux(/dev/net/tun)已接;macOS(utun)待真机接入
+- **虚拟网卡**:Windows(wintun.dll)/ Linux(/dev/net/tun)/ macOS(utun)均已接入;macOS 需以 root(`sudo`)启动,暂无真机验证
 - **自检**:`-test-echo` 进程内完成三人房间网全链路(分配、单播、广播、错码拒绝、防重放)、STUN 探测、发现信标、可靠流往返与文件传输(SHA-256 校验),不需要管理员
 - **界面通道**:`-ipc` 以 stdin/stdout JSON 行协议驱动核心(start-host / join / stop / status / members / stun / test-stun / env / elevate-core / send-file / accept-file / reject-file / pick-file / pick-save 与 discovered、file-offer、file-progress、file-done 事件);需要管理员时只提权核心,新核心经回环 TCP 连回界面,`eglan_ui.exe` 始终保持普通权限
 - 占位骨架:`internal/plugin`(P4 插件宿主)
@@ -33,7 +33,7 @@ EGLAN 在两台机器之间架起一条**端到端加密的虚拟局域网**:建
 | P2(已完成) | 局域网发现、公网直连 |
 | P3a(已完成) | 可靠流层:序号、累积确认、重传、滑窗 |
 | P3b(已完成) | 内置文件传输:报价确认、进度、SHA-256 校验落盘 |
-| P4(下一步) | 插件宿主与插件管理界面 → macOS/Android |
+| P4(下一步) | 插件宿主与插件管理界面 → Android(含辅助触控适配) |
 
 ## 原则
 

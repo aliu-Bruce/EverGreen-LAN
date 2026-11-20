@@ -31,24 +31,35 @@ class IpcBridge {
   bool _exited = true;
 
   // 探测核心程序:界面同目录、当前目录,或任一上级的 dist 目录。
+  // 平台差异只在文件名的后缀与分隔符,各平台产物同名同目录结构。
   static Future<String?> probe() async {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     final cwd = Directory.current.path;
-    final candidates = <String>[
-      '$exeDir\\egland.exe',
-      '$cwd\\egland.exe',
-      '$cwd\\dist\\egland.exe',
-    ];
-    var dir = Directory(exeDir);
-    for (var i = 0; i < 8 && dir.parent.path != dir.path; i++) {
-      dir = dir.parent;
-      candidates.add('${dir.path}\\dist\\egland.exe');
-    }
-    for (final path in candidates) {
+    for (final path in probeCandidates(exeDir, cwd, Platform.isWindows)) {
       final f = File(path);
       if (await f.exists()) return path;
     }
     return null;
+  }
+
+  // 候选路径构造与文件系统无关,单独成函数便于跨平台测试。
+  static List<String> probeCandidates(String exeDir, String cwd, bool isWindows) {
+    final sep = isWindows ? '\\' : '/';
+    final exe = isWindows ? 'egland.exe' : 'egland';
+    String join(String a, String b) => '$a$sep$b';
+    final candidates = <String>[
+      join(exeDir, exe),
+      join(cwd, exe),
+      join(join(cwd, 'dist'), exe),
+    ];
+    var dir = exeDir;
+    for (var i = 0; i < 8; i++) {
+      final idx = dir.lastIndexOf(sep);
+      if (idx <= 0) break;
+      dir = dir.substring(0, idx);
+      candidates.add(join(join(dir, 'dist'), exe));
+    }
+    return candidates;
   }
 
   Future<void> start(String exePath) async {

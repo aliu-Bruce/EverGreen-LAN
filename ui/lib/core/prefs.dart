@@ -24,9 +24,31 @@ class Prefs {
   File? _file;
 
   static File? _resolve() {
-    final appData = Platform.environment['APPDATA'];
-    if (appData == null || appData.isEmpty) return null;
-    return File('$appData\\eglan\\ui.json');
+    final path = resolvePath(
+      isWindows: Platform.isWindows,
+      isMacOS: Platform.isMacOS,
+      env: Platform.environment,
+    );
+    return path == null ? null : File(path);
+  }
+
+  // 配置位置与平台有关,与文件系统无关;单独成函数便于跨平台测试。
+  static String? resolvePath({
+    required bool isWindows,
+    required bool isMacOS,
+    required Map<String, String> env,
+  }) {
+    if (isWindows) {
+      final appData = env['APPDATA'];
+      if (appData == null || appData.isEmpty) return null;
+      return '$appData\\eglan\\ui.json';
+    }
+    final home = env['HOME'];
+    if (home == null || home.isEmpty) return null;
+    if (isMacOS) return '$home/Library/Application Support/eglan/ui.json';
+    final xdg = env['XDG_CONFIG_HOME'];
+    final base = (xdg == null || xdg.isEmpty) ? '$home/.config' : xdg;
+    return '$base/eglan/ui.json';
   }
 
   // 启动即读;文件损坏按默认值处理,不阻塞界面。
