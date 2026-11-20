@@ -107,6 +107,12 @@ type request struct {
 	Title    string `json:"title"`
 }
 
+// 平台能力以函数变量注入:生产走真实实现,测试可换成不建网卡的假设备。
+var (
+	newTun       = tun.New
+	openFirewall = firewall.Open
+)
+
 // Bridge 持有房间状态机与全部连接;方法并发安全。
 type Bridge struct {
 	in       io.Reader
@@ -135,7 +141,7 @@ func Run(in io.Reader, out io.Writer) error {
 	enc.SetEscapeHTML(false)
 	b.out = enc
 	// 发现端口也要能收:规则一次装好,失败不阻断(可能未提权或已手工放行)
-	go func() { _ = firewall.Open(disc.Port) }()
+	go func() { _ = openFirewall(disc.Port) }()
 	b.mu.Lock()
 	b.startDiscoveryLocked()
 	b.mu.Unlock()
@@ -394,12 +400,12 @@ func (b *Bridge) opStartHost(req request) {
 		b.errID(req.ID, "生成本机身份失败: %v", err)
 		return
 	}
-	dev, err := tun.New(tun.Config{Name: adapter, CIDR: cidr, MTU: mtu})
+	dev, err := newTun(tun.Config{Name: adapter, CIDR: cidr, MTU: mtu})
 	if err != nil {
 		b.errID(req.ID, "建虚拟网卡失败(需要管理员权限): %v", err)
 		return
 	}
-	_ = firewall.Open(listen)
+	_ = openFirewall(listen)
 	pc, err := mesh.Bind(listen)
 	if err != nil {
 		dev.Close()
@@ -485,7 +491,7 @@ func (b *Bridge) opJoin(req request) {
 			return
 		}
 		cidr := g.SelfNet().String()
-		dev, err := tun.New(tun.Config{Name: adapter, CIDR: cidr, MTU: mtu})
+		dev, err := newTun(tun.Config{Name: adapter, CIDR: cidr, MTU: mtu})
 		if err != nil {
 			g.Close()
 			b.joinFailed(jid, fmt.Errorf("建虚拟网卡失败(需要管理员权限): %w", err))
