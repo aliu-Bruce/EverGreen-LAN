@@ -420,7 +420,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 last: true,
                 title: app.langs.t('set.license'),
                 hint: app.langs.t('set.licenseHint'),
-                ctl: EgTag(app.langs.t('tag.pending')),
+                ctl: EgTag(app.langs.t('tag.apache')),
               ),
             ],
           ),

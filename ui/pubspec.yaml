@@ -6,12 +6,15 @@ version: 0.1.0+1
 environment:
   sdk: ^3.14.0
 
-# 界面依赖:仅 Flutter 官方框架包(material 已随 SDK 3.47+ 迁出为 material_ui),
-# 其余持久化/协议全部手写,无任何第三方库。
+# 界面依赖:Flutter 官方框架包(material 已随 SDK 3.47+ 迁出为 material_ui),
+# 加上二维码编解码两包(zxing2 BSD-3 / image MIT),均在"开源许可"中列出。
+# 其余持久化/协议全部手写,无其它第三方库。
 dependencies:
   flutter:
     sdk: flutter
   material_ui: ^1.1.0
+  zxing2: ^0.2.4
+  image: ^4.13.1
 
 dev_dependencies:
   flutter_test:

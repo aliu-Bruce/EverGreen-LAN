@@ -1,5 +1,8 @@
 {
-  "$meta": { "name": "English", "tag": "en" },
+  "$meta": {
+    "name": "English",
+    "tag": "en"
+  },
   "nav.home": "Home",
   "nav.room": "Room",
   "nav.transfer": "Transfer",
@@ -138,7 +141,6 @@
   "set.themeRadiusUp": "+",
   "set.themeFont": "Fonts",
   "set.themeFontHint": "Text and mono fonts can be changed.",
-  "set.themeWeight": "Bold text",
   "set.themeSize": "Text size",
   "set.themeRadius": "Corner radius",
   "set.themeI18n": "Localized names",
@@ -207,8 +209,8 @@
   "set.src": "Source code",
   "set.srcHint": "Open source, auditable",
   "btn.repo": "Open repository",
-  "set.license": "License",
-  "set.licenseHint": "License choice still pending",
+  "set.license": "Open source licenses",
+  "set.licenseHint": "This project uses Apache-2.0. Third-party components: zxing2 (BSD-3-Clause), image (MIT), wintun (BSD-3-Clause)",
   "tag.pending": "Pending",
   "ob.w1": "Welcome to EGLAN",
   "ob.w2": "Create a room and send the code to your friends —",
@@ -249,5 +251,11 @@
   "err.stunReply": "The STUN reply contained no usable address",
   "err.bridgeMissing": "Core binary egland.exe not found. Put it next to the UI, or in the repo's dist folder",
   "err.elevateTimeout": "The elevated core did not connect in time; the normal core was restored",
-  "err.coreNotRunning": "The core process is not running"
+  "err.coreNotRunning": "The core process is not running",
+  "btn.importQr": "Import QR",
+  "qr.save": "Save image",
+  "qr.pickTitle": "Choose a QR code image",
+  "qr.decodeFail": "No QR code found. Try a clearer image.",
+  "qr.unavailable": "Room details are not ready yet; the QR code is unavailable",
+  "tag.apache": "Apache-2.0"
 }

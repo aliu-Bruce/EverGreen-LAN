@@ -1,5 +1,8 @@
 {
-  "$meta": { "name": "Русский", "tag": "ru" },
+  "$meta": {
+    "name": "Русский",
+    "tag": "ru"
+  },
   "nav.home": "Главная",
   "nav.room": "Комната",
   "nav.transfer": "Передача",
@@ -138,7 +141,6 @@
   "set.themeRadiusUp": "+",
   "set.themeFont": "Шрифты",
   "set.themeFontHint": "Текстовый и моноширинный шрифты можно менять.",
-  "set.themeWeight": "Полужирный",
   "set.themeSize": "Размер текста",
   "set.themeRadius": "Скругление",
   "set.themeI18n": "Названия по языкам",
@@ -207,8 +209,8 @@
   "set.src": "Исходный код",
   "set.srcHint": "Открытый код, можно проверить",
   "btn.repo": "Открыть репозиторий",
-  "set.license": "Лицензия",
-  "set.licenseHint": "Лицензия ещё не выбрана",
+  "set.license": "Лицензии с открытым кодом",
+  "set.licenseHint": "Проект использует Apache-2.0. Сторонние компоненты: zxing2 (BSD-3-Clause), image (MIT), wintun (BSD-3-Clause)",
   "tag.pending": "Не выбрано",
   "ob.w1": "Добро пожаловать в EGLAN",
   "ob.w2": "Создайте комнату и отправьте код друзьям —",
@@ -249,5 +251,11 @@
   "err.stunReply": "В ответе STUN нет пригодного адреса",
   "err.bridgeMissing": "Не найден egland.exe. Положите его рядом с интерфейсом или в папку dist репозитория",
   "err.elevateTimeout": "Повышенное ядро не подключилось вовремя; восстановлено обычное ядро",
-  "err.coreNotRunning": "Процесс ядра не запущен"
+  "err.coreNotRunning": "Процесс ядра не запущен",
+  "btn.importQr": "Импорт QR",
+  "qr.save": "Сохранить изображение",
+  "qr.pickTitle": "Выберите изображение с QR-кодом",
+  "qr.decodeFail": "QR-код не найден. Попробуйте более чёткое изображение",
+  "qr.unavailable": "Данные комнаты ещё не готовы, QR-код недоступен",
+  "tag.apache": "Apache-2.0"
 }

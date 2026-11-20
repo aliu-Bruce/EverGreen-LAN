@@ -1,5 +1,8 @@
 {
-  "$meta": { "name": "한국어", "tag": "ko" },
+  "$meta": {
+    "name": "한국어",
+    "tag": "ko"
+  },
   "nav.home": "홈",
   "nav.room": "방",
   "nav.transfer": "전송",
@@ -138,7 +141,6 @@
   "set.themeRadiusUp": "+",
   "set.themeFont": "글꼴",
   "set.themeFontHint": "본문과 모노 글꼴을 변경할 수 있습니다.",
-  "set.themeWeight": "굵게 표시",
   "set.themeSize": "글자 크기",
   "set.themeRadius": "모서리 둥글기",
   "set.themeI18n": "다국어 이름",
@@ -207,8 +209,8 @@
   "set.src": "소스 코드",
   "set.srcHint": "오픈 소스, 감사 가능",
   "btn.repo": "저장소 열기",
-  "set.license": "라이선스",
-  "set.licenseHint": "라이선스는 결정 예정",
+  "set.license": "오픈 소스 라이선스",
+  "set.licenseHint": "이 프로젝트는 Apache-2.0입니다. 서드파티: zxing2 (BSD-3-Clause), image (MIT), wintun (BSD-3-Clause)",
   "tag.pending": "결정 예정",
   "ob.w1": "EGLAN에 오신 것을 환영합니다",
   "ob.w2": "방을 만들고 방 코드를 친구에게 보내세요 —",
@@ -249,5 +251,11 @@
   "err.stunReply": "STUN 응답에 사용할 수 있는 주소가 없습니다",
   "err.bridgeMissing": "핵심 프로그램 egland.exe 를 찾을 수 없습니다. UI와 같은 폴더나 저장소의 dist 에 두세요",
   "err.elevateTimeout": "관리자 권한 코어가 제때 연결되지 않아 일반 코어로 되돌렸습니다",
-  "err.coreNotRunning": "코어 프로세스가 실행 중이 아닙니다"
+  "err.coreNotRunning": "코어 프로세스가 실행 중이 아닙니다",
+  "btn.importQr": "QR 가져오기",
+  "qr.save": "이미지 저장",
+  "qr.pickTitle": "QR 코드 이미지 선택",
+  "qr.decodeFail": "QR 코드를 찾지 못했습니다. 더 선명한 이미지를 사용해 주세요",
+  "qr.unavailable": "방 정보가 아직 준비되지 않아 QR 코드를 만들 수 없습니다",
+  "tag.apache": "Apache-2.0"
 }

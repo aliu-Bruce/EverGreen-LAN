@@ -1,5 +1,8 @@
 {
-  "$meta": { "name": "日本語", "tag": "ja" },
+  "$meta": {
+    "name": "日本語",
+    "tag": "ja"
+  },
   "nav.home": "ホーム",
   "nav.room": "ルーム",
   "nav.transfer": "転送",
@@ -138,7 +141,6 @@
   "set.themeRadiusUp": "+",
   "set.themeFont": "フォント",
   "set.themeFontHint": "本文と等幅フォントを変更できます。",
-  "set.themeWeight": "太字",
   "set.themeSize": "文字サイズ",
   "set.themeRadius": "角丸",
   "set.themeI18n": "多言語名",
@@ -207,8 +209,8 @@
   "set.src": "ソースコード",
   "set.srcHint": "オープンソース、監査可能",
   "btn.repo": "リポジトリを開く",
-  "set.license": "ライセンス",
-  "set.licenseHint": "ライセンスは選定中",
+  "set.license": "オープンソースライセンス",
+  "set.licenseHint": "本プロジェクトは Apache-2.0 です。サードパーティ: zxing2 (BSD-3-Clause)、image (MIT)、wintun (BSD-3-Clause)",
   "tag.pending": "選定中",
   "ob.w1": "ようこそ EGLAN へ",
   "ob.w2": "ルームを作り、ルームコードを友だちに送って——",
@@ -249,5 +251,11 @@
   "err.stunReply": "STUN 応答に有効なアドレスがありません",
   "err.bridgeMissing": "コアの egland.exe が見つかりません。UI と同じフォルダか、リポジトリの dist に置いてください",
   "err.elevateTimeout": "管理者権限のコアが時間内に接続しませんでした。通常のコアに戻しました",
-  "err.coreNotRunning": "コアプロセスが動いていません"
+  "err.coreNotRunning": "コアプロセスが動いていません",
+  "btn.importQr": "QRを読み込む",
+  "qr.save": "画像を保存",
+  "qr.pickTitle": "QRコード画像を選択",
+  "qr.decodeFail": "QRコードを検出できませんでした。より鮮明な画像をお試しください",
+  "qr.unavailable": "ルーム情報がまだ準備できていないため、QRコードを生成できません",
+  "tag.apache": "Apache-2.0"
 }

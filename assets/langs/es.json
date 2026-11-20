@@ -1,5 +1,8 @@
 {
-  "$meta": { "name": "Español", "tag": "es" },
+  "$meta": {
+    "name": "Español",
+    "tag": "es"
+  },
   "nav.home": "Inicio",
   "nav.room": "Sala",
   "nav.transfer": "Transferencia",
@@ -138,7 +141,6 @@
   "set.themeRadiusUp": "+",
   "set.themeFont": "Fuentes",
   "set.themeFontHint": "Puedes cambiar las fuentes de texto y monoespacio.",
-  "set.themeWeight": "Texto en negrita",
   "set.themeSize": "Tamaño de texto",
   "set.themeRadius": "Radio de esquina",
   "set.themeI18n": "Nombres por idioma",
@@ -207,8 +209,8 @@
   "set.src": "Código fuente",
   "set.srcHint": "Código abierto, auditable",
   "btn.repo": "Abrir repositorio",
-  "set.license": "Licencia",
-  "set.licenseHint": "Licencia por decidir",
+  "set.license": "Licencias de código abierto",
+  "set.licenseHint": "Este proyecto usa Apache-2.0. Componentes de terceros: zxing2 (BSD-3-Clause), image (MIT), wintun (BSD-3-Clause)",
   "tag.pending": "Por decidir",
   "ob.w1": "Te damos la bienvenida a EGLAN",
   "ob.w2": "Crea una sala y manda el código a tus amigos —",
@@ -249,5 +251,11 @@
   "err.stunReply": "La respuesta STUN no trae una dirección válida",
   "err.bridgeMissing": "No se encontró egland.exe. Colócalo junto a la interfaz o en la carpeta dist del repositorio",
   "err.elevateTimeout": "El núcleo elevado no se conectó a tiempo; se restauró el núcleo normal",
-  "err.coreNotRunning": "El proceso del núcleo no está en ejecución"
+  "err.coreNotRunning": "El proceso del núcleo no está en ejecución",
+  "btn.importQr": "Importar QR",
+  "qr.save": "Guardar imagen",
+  "qr.pickTitle": "Elige una imagen de código QR",
+  "qr.decodeFail": "No se encontró ningún QR. Prueba con una imagen más nítida",
+  "qr.unavailable": "Los datos de la sala aún no están listos; el QR no está disponible",
+  "tag.apache": "Apache-2.0"
 }

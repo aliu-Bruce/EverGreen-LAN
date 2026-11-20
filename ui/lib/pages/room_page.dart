@@ -1,13 +1,17 @@
 // 房间页:房间码(或房主信息)、成员表、联机指南、退出。
 // 主机与成员共用一页;名册由 opMembers 提供,主机行由界面自行合成。
+import 'dart:io';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_state.dart';
 import '../core/invite.dart';
+import '../core/qr.dart';
 import '../theme.dart';
 import '../widgets/eg.dart';
 import '../widgets/fx.dart';
+import '../widgets/qr_view.dart';
 
 class RoomPage extends StatefulWidget {
   final VoidCallback goHome;
@@ -243,30 +247,72 @@ class _RoomPageState extends State<RoomPage> {
     });
   }
 
+  // 二维码内容:带 peer 的邀请链接;若地址尚未就绪则退化为纯房间码链接。
+  String _qrPayload(AppState app) {
+    final code = app.code == null ? '' : EgInvite.normalizeCode(app.code!);
+    final peer = app.invitePeer;
+    if (code.isEmpty) return '';
+    return (peer == null || peer.isEmpty)
+        ? 'eglan://join/$code'
+        : EgInvite.build(code, peer);
+  }
+
+  Future<void> _exportQr(AppState app, String payload) async {
+    final path = await app.pickSave('eglan-qr.png');
+    if (path == null) return;
+    final png = renderQrPng(payload);
+    if (png == null) return;
+    await File(path).writeAsBytes(png);
+  }
+
   void _showQr(BuildContext context, AppState app) {
     final c = Eg.of(context).c;
+    final payload = _qrPayload(app);
+    final matrix = payload.isEmpty ? null : encodeQr(payload);
     showDialog<void>(
       context: context,
       builder: (context) => EgSkinDialog(
         title: app.langs.t('qr.title'),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
               app.langs.t('qr.hint', {'room': app.hostName ?? ''}),
               style: egText(c, size: 13.5, color: c.muted, height: 1.6),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 18),
-            SelectableText(app.code ?? '', style: egMono(c, size: 22, weight: FontWeight.w700, color: c.acc, letterSpacing: 2)),
-            const SizedBox(height: 10),
-            Text(app.langs.t('join.peer'), style: egText(c, size: 11.5, color: c.muted)),
-            SelectableText(app.selfIp ?? '', style: egMono(c, size: 13, color: c.text)),
-            const SizedBox(height: 14),
-            EgChip(app.langs.t('chip.wip')),
+            if (matrix != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: EgQrView(matrix: matrix, size: 220),
+              )
+            else
+              Text(app.langs.t('qr.unavailable'), style: egText(c, size: 13, color: c.bad)),
+            const SizedBox(height: 12),
+            SelectableText(app.code ?? '', style: egMono(c, size: 20, weight: FontWeight.w700, color: c.acc, letterSpacing: 2)),
+            if (matrix != null) ...[
+              const SizedBox(height: 4),
+              SelectableText(payload, style: egMono(c, size: 10.5, color: c.faint, height: 1.4), textAlign: TextAlign.center),
+            ],
           ],
         ),
         actions: [
           EgButton(label: app.langs.t('btn.close'), small: true, onPressed: () => Navigator.of(context).pop()),
+          if (matrix != null) ...[
+            const SizedBox(width: 8),
+            EgButton(
+              label: app.langs.t('qr.save'),
+              small: true,
+              kind: EgBtnKind.primary,
+              onPressed: () => _exportQr(app, payload),
+            ),
+          ],
         ],
       ),
     );

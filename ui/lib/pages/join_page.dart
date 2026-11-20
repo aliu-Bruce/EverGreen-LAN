@@ -1,10 +1,13 @@
 // 加入页:房间码两段输入 + 房主地址;连接过程以终端呈现,失败给错误面板。
 // v1 需要房主 IP:端口(核心以 peer 直连);发现与打洞随后续版本发布。
+import 'dart:io';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_state.dart';
 import '../core/invite.dart';
+import '../core/qr.dart';
 import '../theme.dart';
 import '../widgets/eg.dart';
 import '../widgets/fx.dart';
@@ -41,9 +44,9 @@ class _JoinPageState extends State<JoinPage> with TickerProviderStateMixin {
 
   String get _code => '${_seg1.text.trim()}${_seg2.text.trim()}';
 
-  void _paste() async {
-    final text = (await Clipboard.getData('text/plain'))?.text?.trim() ?? '';
-    if (text.isEmpty) return;
+  // 把邀请文本或房间码填入输入框:优先识别邀请链接,否则提取字母数字。
+  // 返回是否成功填入。
+  bool _fillInvite(String text) {
     final invite = EgInvite.parse(text);
     if (invite != null) {
       final code = invite.code;
@@ -52,9 +55,8 @@ class _JoinPageState extends State<JoinPage> with TickerProviderStateMixin {
         _seg2.text = code.substring(4, code.length.clamp(4, 8));
         if (invite.peer != null) _peer.text = invite.peer!;
       });
-      return;
+      return true;
     }
-    // 不是邀请链接时退回旧行为:从任意文本里提取房间码。
     final b = StringBuffer();
     for (final r in text.runes) {
       final ch = String.fromCharCode(r).toUpperCase();
@@ -62,10 +64,39 @@ class _JoinPageState extends State<JoinPage> with TickerProviderStateMixin {
       if (b.length >= 8) break;
     }
     final s = b.toString();
+    if (s.isEmpty) return false;
     setState(() {
       _seg1.text = s.substring(0, s.length.clamp(0, 4));
       _seg2.text = s.substring(4, s.length.clamp(4, 8));
     });
+    return true;
+  }
+
+  void _paste() async {
+    final text = (await Clipboard.getData('text/plain'))?.text?.trim() ?? '';
+    if (text.isEmpty) return;
+    _fillInvite(text);
+  }
+
+  // 从图片导入二维码:选图 → 解码 → 填入。相机扫码留给 Android 版。
+  void _importQr() async {
+    final app = AppState.of(context);
+    final path = await app.pickFile(title: app.langs.t('qr.pickTitle'));
+    if (path == null || !mounted) return;
+    String? text;
+    try {
+      final bytes = await File(path).readAsBytes();
+      text = decodeQr(bytes);
+    } catch (_) {}
+    if (!mounted) return;
+    final ok = text != null && _fillInvite(text);
+    if (!ok) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        content: Text(app.langs.t('qr.decodeFail')),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ));
+    }
   }
 
   void _connect() {
@@ -157,7 +188,7 @@ class _JoinPageState extends State<JoinPage> with TickerProviderStateMixin {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              EgButton(label: app.langs.t('btn.scan'), onPressed: null),
+              EgButton(label: app.langs.t('btn.importQr'), onPressed: _importQr),
               const SizedBox(width: 8),
               EgButton(label: app.langs.t('btn.connect'), kind: EgBtnKind.primary, onPressed: app.room == RoomState.idle ? _connect : null),
             ],

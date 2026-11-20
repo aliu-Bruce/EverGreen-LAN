@@ -1,5 +1,8 @@
 {
-  "$meta": { "name": "简体中文", "tag": "zh-Hans" },
+  "$meta": {
+    "name": "简体中文",
+    "tag": "zh-Hans"
+  },
   "nav.home": "主页",
   "nav.room": "房间",
   "nav.transfer": "传输",
@@ -138,7 +141,6 @@
   "set.themeRadiusUp": "+",
   "set.themeFont": "字体",
   "set.themeFontHint": "正文与等宽字体可自由更换。",
-  "set.themeWeight": "加粗字体",
   "set.themeSize": "字号",
   "set.themeRadius": "圆角",
   "set.themeI18n": "多语言名称",
@@ -208,7 +210,7 @@
   "set.srcHint": "开源,可审计",
   "btn.repo": "打开仓库",
   "set.license": "开源许可",
-  "set.licenseHint": "许可证选型待定",
+  "set.licenseHint": "本项目采用 Apache-2.0 许可;第三方组件:zxing2(BSD-3-Clause)、image(MIT)、wintun(BSD-3-Clause)",
   "tag.pending": "待定",
   "ob.w1": "欢迎来到 EGLAN",
   "ob.w2": "创建一个房间,把房间码发给朋友——",
@@ -249,5 +251,11 @@
   "err.stunReply": "STUN 响应没有可用地址",
   "err.bridgeMissing": "未找到核心程序 egland.exe。请把它放在界面程序同一目录,或仓库的 dist 目录下",
   "err.elevateTimeout": "没有等到管理员核心,已恢复普通核心",
-  "err.coreNotRunning": "核心进程未运行"
+  "err.coreNotRunning": "核心进程未运行",
+  "btn.importQr": "导入二维码",
+  "qr.save": "保存图片",
+  "qr.pickTitle": "选择二维码图片",
+  "qr.decodeFail": "未识别到二维码,请换一张更清晰的图片",
+  "qr.unavailable": "房间信息未就绪,暂时无法生成二维码",
+  "tag.apache": "Apache-2.0"
 }
