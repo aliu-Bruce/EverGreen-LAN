@@ -101,6 +101,43 @@ class AppState extends ChangeNotifier {
   bool _joinPending = false; // 请求已发出、首应答未回:挡住重复点击
   StreamSubscription<Map<String, dynamic>>? _sub;
 
+  // 统一的权限错误出口:开房、入房、房间中断等任何路径遇到"需要管理员"时
+  // 都写这里,界面只监听一个字段弹一次提权框,不再依赖某个按钮的返回值。
+  String? permissionError;
+  String? _permissionRetryKind; // 'create' / 'join',提权成功后重试哪一个动作
+  Map<String, dynamic>? _lastJoinArgs; // 最近一次入房参数,供提权后重试
+
+  // 只有权限类错误才写统一字段;其余失败由各调用方自行展示。
+  bool _needsAdmin(String message) =>
+      message.contains('管理员权限') || message.contains('权限被拒');
+
+  void reportPermissionError(String message, {String? retryKind}) {
+    if (!_needsAdmin(message) || admin == true) return;
+    permissionError = message;
+    _permissionRetryKind = retryKind;
+    notifyListeners();
+  }
+
+  void clearPermissionError() {
+    if (permissionError == null && _permissionRetryKind == null) return;
+    permissionError = null;
+    _permissionRetryKind = null;
+    notifyListeners();
+  }
+
+  String? get permissionRetryKind => _permissionRetryKind;
+
+  // 提权成功后重试最近一次入房(开房由界面 _goCreate 重试)。
+  Future<void> retryLastJoin() async {
+    final args = _lastJoinArgs;
+    if (args == null) return;
+    await joinRoom(
+      args['code'] as String,
+      args['peer'] as String,
+      fromDiscovery: args['fromDiscovery'] as bool? ?? false,
+    );
+  }
+
   // ---- 启动 ----
   Future<void> init() async {
     prefs.loadSync();
@@ -360,6 +397,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return null;
     } on IpcError catch (e) {
+      reportPermissionError(e.message, retryKind: 'create');
       return e.message;
     }
   }
@@ -377,6 +415,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     final codeDisp = _displayOf(displayCode);
     joinLog = [JoinLine(LogKind.ok, langs.t('log.resolve', {'code': codeDisp}))];
+    // 记下本次入房参数:权限失败、提权成功后据此原样重试。
+    _lastJoinArgs = {'code': displayCode, 'peer': peer, 'fromDiscovery': fromDiscovery};
     notifyListeners();
     try {
       final ack = await bridge.request({
@@ -407,6 +447,7 @@ class AppState extends ChangeNotifier {
         joinLog = [...joinLog, JoinLine(LogKind.err, e.message)];
       }
       room = RoomState.idle;
+      reportPermissionError(e.message, retryKind: 'join');
       notifyListeners();
     }
   }
@@ -628,9 +669,11 @@ class AppState extends ChangeNotifier {
           joiningCode = null;
           room = RoomState.idle;
           _lastJoinId = '';
+          reportPermissionError(message, retryKind: 'join');
         } else if (id.isNotEmpty && id == _lastHostId) {
           // 开房失败错误已由 createRoom 的首应答路径给出,这里只兜底
           room = RoomState.idle;
+          reportPermissionError((msg['message'] as String?) ?? '', retryKind: 'create');
         }
       case 'status':
         final state = (msg['state'] as String?) ?? 'idle';
@@ -656,6 +699,7 @@ class AppState extends ChangeNotifier {
           final message = (msg['message'] as String?) ?? '';
           _setRoom(RoomState.idle);
           if (message.isNotEmpty) joinError = message;
+          reportPermissionError(message);
         } else if (name == 'discovered') {
           discovered = ((msg['rooms'] as List<dynamic>?) ?? []).cast<Map<String, dynamic>>();
         } else if (name == 'file-offer' || name == 'file-progress' || name == 'file-done') {

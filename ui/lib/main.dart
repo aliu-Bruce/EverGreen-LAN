@@ -1,4 +1,6 @@
 // EverGreen LAN 界面入口:温室外壳(侧栏/顶栏)、页面路由与引导覆盖。
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 
 import 'core/app_state.dart';
@@ -72,6 +74,8 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   ShellPage _page = ShellPage.home;
   bool _wasInRoom = false;
+  String? _shownPermissionError;
+  AppState? _listeningApp;
 
   // 状态变化时才自动跳转:刚入房→房间页,刚离房→回主页。
   // 手动点导航不受影响:空闲时也允许看房间页的空态说明。
@@ -87,12 +91,53 @@ class _ShellState extends State<Shell> {
     _wasInRoom = nowIn;
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = AppState.of(context);
+    if (identical(_listeningApp, app)) return;
+    _listeningApp?.removeListener(_onAppChanged);
+    app.addListener(_onAppChanged);
+    _listeningApp = app;
+  }
+
+  @override
+  void dispose() {
+    _listeningApp?.removeListener(_onAppChanged);
+    super.dispose();
+  }
+
+  // 统一的权限错误出口:任何路径写入 permissionError 时弹一次提权框,
+  // 关掉即清空标记,避免同一次失败在后续 rebuild 里重复弹。
+  void _onAppChanged() {
+    if (!mounted) return;
+    final app = AppState.of(context);
+    final message = app.permissionError;
+    if (message == null) {
+      _shownPermissionError = null;
+      return;
+    }
+    if (identical(_shownPermissionError, message)) return;
+    _shownPermissionError = message;
+    final kind = app.permissionRetryKind;
+    final retry = switch (kind) {
+      'create' => _goCreate,
+      'join' => () => unawaited(app.retryLastJoin()),
+      _ => _goCreate,
+    };
+    app.clearPermissionError();
+    _showCoreError(context, message, onRetry: retry);
+  }
+
   void _goCreate() async {
     final app = AppState.of(context);
     final err = await app.createRoom();
     if (!mounted) return;
     if (err != null) {
-      _showCoreError(context, err);
+      // 权限错误走 AppState.permissionError 的统一弹框,这里只兜底非权限错误。
+      if (!(err.contains('管理员权限') || err.contains('权限被拒'))) {
+        _showCoreError(context, err, onRetry: null);
+      }
     } else {
       setState(() => _page = ShellPage.room);
     }
@@ -100,16 +145,18 @@ class _ShellState extends State<Shell> {
 
   void _goJoin() => setState(() => _page = ShellPage.join);
 
-  void _showCoreError(BuildContext context, String message) {
+  void _showCoreError(BuildContext context, String message, {VoidCallback? onRetry}) {
     final app = AppState.of(context);
     // 核心的错误文案只在权限不足时附带这句;其余失败重启也无济于事。
     final needsAdmin = message.contains('管理员权限') || message.contains('权限被拒');
+    // onRetry 为 null 表示非权限兜底错误:不显示提权按钮。
+    final canRestart = onRetry != null && needsAdmin && app.canElevate && app.admin != true;
     showDialog<void>(
       context: context,
       builder: (context) => _CoreErrorDialog(
         message: message,
-        canRestart: needsAdmin && app.canElevate && app.admin != true,
-        onRetry: _goCreate,
+        canRestart: canRestart,
+        onRetry: onRetry,
       ),
     );
   }
