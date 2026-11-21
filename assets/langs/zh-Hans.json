@@ -210,7 +210,7 @@
   "set.srcHint": "开源,可审计",
   "btn.repo": "打开仓库",
   "set.license": "开源许可",
-  "set.licenseHint": "本项目采用 Apache-2.0 许可;第三方组件:zxing2(BSD-3-Clause)、image(MIT)、wintun(BSD-3-Clause)",
+  "set.licenseHint": "本项目源码采用 Apache-2.0 许可",
   "tag.pending": "待定",
   "ob.w1": "欢迎来到 EGLAN",
   "ob.w2": "创建一个房间,把房间码发给朋友——",
@@ -257,5 +257,15 @@
   "qr.pickTitle": "选择二维码图片",
   "qr.decodeFail": "未识别到二维码,请换一张更清晰的图片",
   "qr.unavailable": "房间信息未就绪,暂时无法生成二维码",
-  "tag.apache": "Apache-2.0"
+  "tag.apache": "Apache-2.0",
+  "set.thirdParty": "第三方组件",
+  "lic.zxing2": "zxing2",
+  "lic.zxing2Hint": "二维码编码与解码",
+  "lic.image": "image",
+  "lic.imageHint": "图片格式转换与导出",
+  "lic.wintun": "Wintun",
+  "lic.wintunHint": "Windows 虚拟网卡驱动",
+  "lic.bsd3": "BSD-3-Clause",
+  "lic.mit": "MIT",
+  "lic.wintunLicense": "WireGuard 许可"
 }

@@ -210,7 +210,7 @@
   "set.srcHint": "オープンソース、監査可能",
   "btn.repo": "リポジトリを開く",
   "set.license": "オープンソースライセンス",
-  "set.licenseHint": "本プロジェクトは Apache-2.0 です。サードパーティ: zxing2 (BSD-3-Clause)、image (MIT)、wintun (BSD-3-Clause)",
+  "set.licenseHint": "本プロジェクトのソースコードは Apache-2.0 ライセンスです",
   "tag.pending": "選定中",
   "ob.w1": "ようこそ EGLAN へ",
   "ob.w2": "ルームを作り、ルームコードを友だちに送って——",
@@ -257,5 +257,15 @@
   "qr.pickTitle": "QRコード画像を選択",
   "qr.decodeFail": "QRコードを検出できませんでした。より鮮明な画像をお試しください",
   "qr.unavailable": "ルーム情報がまだ準備できていないため、QRコードを生成できません",
-  "tag.apache": "Apache-2.0"
+  "tag.apache": "Apache-2.0",
+  "set.thirdParty": "サードパーティ製コンポーネント",
+  "lic.zxing2": "zxing2",
+  "lic.zxing2Hint": "QRコードのエンコードとデコード",
+  "lic.image": "image",
+  "lic.imageHint": "画像形式の変換と書き出し",
+  "lic.wintun": "Wintun",
+  "lic.wintunHint": "Windows 仮想ネットワークアダプタードライバー",
+  "lic.bsd3": "BSD-3-Clause",
+  "lic.mit": "MIT",
+  "lic.wintunLicense": "WireGuard ライセンス"
 }

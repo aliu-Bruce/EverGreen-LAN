@@ -210,7 +210,7 @@
   "set.srcHint": "開源,可稽核",
   "btn.repo": "開啟儲存庫",
   "set.license": "開源授權",
-  "set.licenseHint": "本專案採用 Apache-2.0 授權;第三方元件:zxing2(BSD-3-Clause)、image(MIT)、wintun(BSD-3-Clause)",
+  "set.licenseHint": "本專案原始碼採用 Apache-2.0 授權",
   "tag.pending": "待定",
   "ob.w1": "歡迎來到 EGLAN",
   "ob.w2": "建立一個房間,把房間碼傳給朋友——",
@@ -257,5 +257,15 @@
   "qr.pickTitle": "選擇二維碼圖片",
   "qr.decodeFail": "未辨識到二維碼,請換一張更清晰的圖片",
   "qr.unavailable": "房間資訊尚未就緒,暫時無法產生二維碼",
-  "tag.apache": "Apache-2.0"
+  "tag.apache": "Apache-2.0",
+  "set.thirdParty": "第三方元件",
+  "lic.zxing2": "zxing2",
+  "lic.zxing2Hint": "二維碼編碼與解碼",
+  "lic.image": "image",
+  "lic.imageHint": "圖片格式轉換與匯出",
+  "lic.wintun": "Wintun",
+  "lic.wintunHint": "Windows 虛擬網路卡驅動",
+  "lic.bsd3": "BSD-3-Clause",
+  "lic.mit": "MIT",
+  "lic.wintunLicense": "WireGuard 授權"
 }

@@ -210,7 +210,7 @@
   "set.srcHint": "Открытый код, можно проверить",
   "btn.repo": "Открыть репозиторий",
   "set.license": "Лицензии с открытым кодом",
-  "set.licenseHint": "Проект использует Apache-2.0. Сторонние компоненты: zxing2 (BSD-3-Clause), image (MIT), wintun (BSD-3-Clause)",
+  "set.licenseHint": "Исходный код проекта распространяется по лицензии Apache-2.0",
   "tag.pending": "Не выбрано",
   "ob.w1": "Добро пожаловать в EGLAN",
   "ob.w2": "Создайте комнату и отправьте код друзьям —",
@@ -257,5 +257,15 @@
   "qr.pickTitle": "Выберите изображение с QR-кодом",
   "qr.decodeFail": "QR-код не найден. Попробуйте более чёткое изображение",
   "qr.unavailable": "Данные комнаты ещё не готовы, QR-код недоступен",
-  "tag.apache": "Apache-2.0"
+  "tag.apache": "Apache-2.0",
+  "set.thirdParty": "Сторонние компоненты",
+  "lic.zxing2": "zxing2",
+  "lic.zxing2Hint": "Кодирование и декодирование QR-кодов",
+  "lic.image": "image",
+  "lic.imageHint": "Преобразование и экспорт форматов изображений",
+  "lic.wintun": "Wintun",
+  "lic.wintunHint": "Драйвер виртуального сетевого адаптера Windows",
+  "lic.bsd3": "BSD-3-Clause",
+  "lic.mit": "MIT",
+  "lic.wintunLicense": "Лицензия WireGuard"
 }

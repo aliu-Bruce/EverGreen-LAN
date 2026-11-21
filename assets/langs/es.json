@@ -210,7 +210,7 @@
   "set.srcHint": "Código abierto, auditable",
   "btn.repo": "Abrir repositorio",
   "set.license": "Licencias de código abierto",
-  "set.licenseHint": "Este proyecto usa Apache-2.0. Componentes de terceros: zxing2 (BSD-3-Clause), image (MIT), wintun (BSD-3-Clause)",
+  "set.licenseHint": "El código fuente de este proyecto usa la licencia Apache-2.0",
   "tag.pending": "Por decidir",
   "ob.w1": "Te damos la bienvenida a EGLAN",
   "ob.w2": "Crea una sala y manda el código a tus amigos —",
@@ -257,5 +257,15 @@
   "qr.pickTitle": "Elige una imagen de código QR",
   "qr.decodeFail": "No se encontró ningún QR. Prueba con una imagen más nítida",
   "qr.unavailable": "Los datos de la sala aún no están listos; el QR no está disponible",
-  "tag.apache": "Apache-2.0"
+  "tag.apache": "Apache-2.0",
+  "set.thirdParty": "Componentes de terceros",
+  "lic.zxing2": "zxing2",
+  "lic.zxing2Hint": "Codificación y decodificación de códigos QR",
+  "lic.image": "image",
+  "lic.imageHint": "Conversión y exportación de formatos de imagen",
+  "lic.wintun": "Wintun",
+  "lic.wintunHint": "Controlador de adaptador de red virtual de Windows",
+  "lic.bsd3": "BSD-3-Clause",
+  "lic.mit": "MIT",
+  "lic.wintunLicense": "Licencia de WireGuard"
 }

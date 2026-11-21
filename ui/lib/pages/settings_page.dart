@@ -425,6 +425,30 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
         ),
+
+        Sect(title: app.langs.t('set.thirdParty')),
+        EgPanel(
+          child: Column(
+            children: [
+              _Row(
+                title: app.langs.t('lic.zxing2'),
+                hint: app.langs.t('lic.zxing2Hint'),
+                ctl: EgTag(app.langs.t('lic.bsd3'), color: c.faint),
+              ),
+              _Row(
+                title: app.langs.t('lic.image'),
+                hint: app.langs.t('lic.imageHint'),
+                ctl: EgTag(app.langs.t('lic.mit'), color: c.faint),
+              ),
+              _Row(
+                last: true,
+                title: app.langs.t('lic.wintun'),
+                hint: app.langs.t('lic.wintunHint'),
+                ctl: EgTag(app.langs.t('lic.wintunLicense'), color: c.faint),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

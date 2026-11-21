@@ -210,7 +210,7 @@
   "set.srcHint": "오픈 소스, 감사 가능",
   "btn.repo": "저장소 열기",
   "set.license": "오픈 소스 라이선스",
-  "set.licenseHint": "이 프로젝트는 Apache-2.0입니다. 서드파티: zxing2 (BSD-3-Clause), image (MIT), wintun (BSD-3-Clause)",
+  "set.licenseHint": "이 프로젝트 소스 코드는 Apache-2.0 라이선스입니다",
   "tag.pending": "결정 예정",
   "ob.w1": "EGLAN에 오신 것을 환영합니다",
   "ob.w2": "방을 만들고 방 코드를 친구에게 보내세요 —",
@@ -257,5 +257,15 @@
   "qr.pickTitle": "QR 코드 이미지 선택",
   "qr.decodeFail": "QR 코드를 찾지 못했습니다. 더 선명한 이미지를 사용해 주세요",
   "qr.unavailable": "방 정보가 아직 준비되지 않아 QR 코드를 만들 수 없습니다",
-  "tag.apache": "Apache-2.0"
+  "tag.apache": "Apache-2.0",
+  "set.thirdParty": "서드파티 구성 요소",
+  "lic.zxing2": "zxing2",
+  "lic.zxing2Hint": "QR 코드 인코딩 및 디코딩",
+  "lic.image": "image",
+  "lic.imageHint": "이미지 형식 변환 및 내보내기",
+  "lic.wintun": "Wintun",
+  "lic.wintunHint": "Windows 가상 네트워크 어댑터 드라이버",
+  "lic.bsd3": "BSD-3-Clause",
+  "lic.mit": "MIT",
+  "lic.wintunLicense": "WireGuard 라이선스"
 }
