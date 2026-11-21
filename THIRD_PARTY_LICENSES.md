@@ -61,8 +61,8 @@ Dart 图像处理库，用于二维码 PNG 的解码与导出。
 
 ### Wintun — Prebuilt Binaries License（WireGuard LLC）
 
-Windows 虚拟网卡驱动，随 `dist\wintun.dll` 分发。
+Windows 虚拟网卡驱动，随 Windows 安装包分发（`wintun.dll` for x64 / `wintun-arm64.dll` for arm64，安装后统一命名为 `wintun.dll`）。
 项目：https://www.wintun.net/
-完整许可：`dist\wintun-LICENSE.txt`
+完整许可：`wintun-LICENSE.txt`
 
 本项目仅通过官方 `wintun.h` API 使用该 DLL，未修改、未逆向，未使用 WireGuard 名称背书。

@@ -5,16 +5,23 @@ on:
   push:
     tags: ['v*']
 
+env:
+  APP_VERSION: '0.1.0'
+  FLUTTER_VERSION: '3.50.1'
+  GO_VERSION: '1.24'
+
 jobs:
   # ---------- Windows x64 ----------
   win-x64:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with: { channel: stable }
       - uses: actions/setup-go@v5
-        with: { go-version: '1.24' }
+        with: { go-version: '${{ env.GO_VERSION }}' }
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '${{ env.FLUTTER_VERSION }}'
       - name: 编译核心(Windows amd64)
         working-directory: core
         shell: pwsh
@@ -22,41 +29,74 @@ jobs:
           New-Item -ItemType Directory -Force -Path ..\build-core | Out-Null
           $env:GOOS='windows'; $env:GOARCH='amd64'
           go build -o ..\build-core\egland.exe .\cmd\egland
-      - name: 放置 wintun 到 dist(打包脚本从此取用)
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item 'packaging/windows/wintun.dll' 'dist/wintun.dll' -Force
-          Copy-Item 'packaging/windows/wintun-LICENSE.txt' 'dist/wintun-LICENSE.txt' -Force
-      - name: Flutter 依赖与构建
+      - name: 构建 UI(Windows x64)
         working-directory: ui
         run: |
           flutter pub get
           flutter build windows --release
-      - name: 安装 WiX v3
+      - name: 准备 WiX v3
         shell: pwsh
-        run: choco install wixtoolset -y --no-progress
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'wix314.zip'
+          Invoke-WebRequest -Uri 'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip' -OutFile $zip
+          Expand-Archive $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'wix314') -Force
+          "WIX_BIN=$(Join-Path $env:RUNNER_TEMP 'wix314')" >> $env:GITHUB_ENV
       - name: 打包 zip + msi
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path out | Out-Null
           & './packaging/windows/package.ps1' `
             -BuildDir 'ui/build/windows/x64/runner/Release' `
-            -Arch 'x64' -CoreExe 'build-core/egland.exe' -OutDir 'out'
+            -Arch 'x64' -CoreExe 'build-core/egland.exe' -OutDir 'out' -WixBin $env:WIX_BIN -Version $env:APP_VERSION
       - uses: actions/upload-artifact@v4
-        with: { name: windows-x64, path: out/*.zip }
-      - uses: actions/upload-artifact@v4
-        with: { name: windows-x64-msi, path: out/*.msi }
+        with:
+          name: EverGreen-LAN-windows-x64
+          path: |
+            out/*.zip
+            out/*.msi
 
   # ---------- Windows arm64 ----------
   win-arm64:
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with: { channel: stable }
       - uses: actions/setup-go@v5
-        with: { go-version: '1.24' }
+        with: { go-version: '${{ env.GO_VERSION }}' }
+      # 官方 Flutter SDK 只有 x64 宿主版;先装 x64,再让 SDK 引导 arm64 Dart。
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '${{ env.FLUTTER_VERSION }}'
+          architecture: x64
+          cache: false
+      - name: 切换为 arm64 宿主 Flutter
+        shell: pwsh
+        run: |
+          $flutterCmd = Get-Command flutter -ErrorAction Stop
+          $root = Split-Path (Split-Path $flutterCmd.Source -Parent) -Parent
+          "FLUTTER_SDK_ROOT=$root" >> $env:GITHUB_ENV
+          "SDK=$root"
+          Remove-Item "$root\bin\cache\dart-sdk" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "$root\bin\cache\engine-dart-sdk.stamp" -Force -ErrorAction SilentlyContinue
+          Remove-Item "$root\bin\cache\flutter_tools.snapshot" -Force -ErrorAction SilentlyContinue
+          Remove-Item "$root\bin\cache\flutter_tools.stamp" -Force -ErrorAction SilentlyContinue
+          $env:FLUTTER_HOST_ARCH = 'arm64'
+          flutter --version
+      - name: 确认宿主架构
+        shell: pwsh
+        run: |
+          $dart = Join-Path $env:FLUTTER_SDK_ROOT 'bin\cache\dart-sdk\bin\dart.exe'
+          if (-not (Test-Path $dart)) { throw "缺少 $dart" }
+          $fs = [IO.File]::OpenRead($dart)
+          try {
+            $br = New-Object IO.BinaryReader($fs)
+            $fs.Seek(0x3C, 'Begin') | Out-Null
+            $pe = $br.ReadInt32()
+            $fs.Seek($pe + 4, 'Begin') | Out-Null
+            $machine = $br.ReadUInt16()
+          } finally { $fs.Dispose() }
+          "dart.exe machine=0x{0:X4}" -f $machine
+          if ($machine -ne 0xAA64) { throw "Dart 不是 arm64" }
+          flutter --version
       - name: 编译核心(Windows arm64)
         working-directory: core
         shell: pwsh
@@ -64,197 +104,168 @@ jobs:
           New-Item -ItemType Directory -Force -Path ..\build-core | Out-Null
           $env:GOOS='windows'; $env:GOARCH='arm64'
           go build -o ..\build-core\egland.exe .\cmd\egland
-      - name: 放置 wintun 到 dist(打包脚本从此取用)
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item 'packaging/windows/wintun.dll' 'dist/wintun.dll' -Force
-          Copy-Item 'packaging/windows/wintun-LICENSE.txt' 'dist/wintun-LICENSE.txt' -Force
-      - name: Flutter 依赖与构建
+      - name: 构建 UI(Windows arm64)
         working-directory: ui
         run: |
           flutter pub get
           flutter build windows --release
-      - name: 安装 WiX v3
+      - name: 准备 WiX v3
         shell: pwsh
-        run: choco install wixtoolset -y --no-progress
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'wix314.zip'
+          Invoke-WebRequest -Uri 'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip' -OutFile $zip
+          Expand-Archive $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'wix314') -Force
+          "WIX_BIN=$(Join-Path $env:RUNNER_TEMP 'wix314')" >> $env:GITHUB_ENV
       - name: 打包 zip + msi
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path out | Out-Null
           & './packaging/windows/package.ps1' `
             -BuildDir 'ui/build/windows/arm64/runner/Release' `
-            -Arch 'arm64' -CoreExe 'build-core/egland.exe' -OutDir 'out'
+            -Arch 'arm64' -CoreExe 'build-core/egland.exe' -OutDir 'out' -WixBin $env:WIX_BIN -Version $env:APP_VERSION
       - uses: actions/upload-artifact@v4
-        with: { name: windows-arm64, path: out/*.zip }
-      - uses: actions/upload-artifact@v4
-        with: { name: windows-arm64-msi, path: out/*.msi }
+        with:
+          name: EverGreen-LAN-windows-arm64
+          path: |
+            out/*.zip
+            out/*.msi
 
   # ---------- Linux x64 ----------
   linux-x64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with: { channel: stable }
       - uses: actions/setup-go@v5
-        with: { go-version: '1.24' }
+        with: { go-version: '${{ env.GO_VERSION }}' }
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '${{ env.FLUTTER_VERSION }}'
       - name: 安装 Linux 依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev rpm
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
+            liblzma-dev rpm squashfs-tools ruby ruby-dev build-essential libffi-dev
           sudo gem install fpm --no-document
       - name: 编译核心(Linux amd64)
         working-directory: core
         run: |
           mkdir -p ../build-core
           GOOS=linux GOARCH=amd64 go build -o ../build-core/egland ./cmd/egland
-      - name: Flutter 依赖与构建
+      - name: 构建 UI(Linux x64)
         working-directory: ui
         run: |
           flutter pub get
           flutter build linux --release
-      - name: 打包
+      - name: 打包 AppImage/deb/rpm
         run: |
           chmod +x packaging/linux/package.sh
-          mkdir -p out
           ./packaging/linux/package.sh \
-            'ui/build/linux/x64/release/bundle' 'x64' 'build-core/egland' 'out'
+            'ui/build/linux/x64/release/bundle' 'x64' 'build-core/egland' 'out' "$APP_VERSION"
       - uses: actions/upload-artifact@v4
-        with: { name: linux-x64, path: out/* }
+        with:
+          name: EverGreen-LAN-linux-x64
+          path: out/*.AppImage
+          # deb/rpm 另开上传步骤,便于分辨缺失原因
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EverGreen-LAN-linux-x64-pkg
+          path: |
+            out/*.deb
+            out/*.rpm
 
   # ---------- Linux arm64 ----------
   linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with: { channel: stable }
       - uses: actions/setup-go@v5
-        with: { go-version: '1.24' }
+        with: { go-version: '${{ env.GO_VERSION }}' }
+      # 官方 Flutter SDK 没有 arm64 宿主包;装 x64 SDK 后引导 arm64 Dart 与 arm64 引擎工具。
+      - name: 下载 Flutter SDK(x64 宿主包)
+        run: |
+          curl -fsSL --retry 3 -o /tmp/flutter.tar.xz \
+            "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
+          sudo mkdir -p /opt/flutter-sdk
+          sudo tar -xJf /tmp/flutter.tar.xz -C /opt/flutter-sdk --strip-components=1
+          sudo chown -R "$USER":"$USER" /opt/flutter-sdk
+          echo "/opt/flutter-sdk/bin" >> "$GITHUB_PATH"
+      - name: 引导 arm64 宿主 Flutter
+        run: |
+          export FLUTTER_HOST_ARCH=arm64
+          rm -rf /opt/flutter-sdk/bin/cache/dart-sdk \
+                 /opt/flutter-sdk/bin/cache/engine-dart-sdk.stamp
+          rm -f /opt/flutter-sdk/bin/cache/flutter_tools.snapshot \
+                /opt/flutter-sdk/bin/cache/flutter_tools.stamp
+          flutter config --no-analytics
+          flutter --version
+          uname -m
       - name: 安装 Linux 依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev rpm
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
+            liblzma-dev rpm squashfs-tools ruby ruby-dev build-essential libffi-dev
           sudo gem install fpm --no-document
       - name: 编译核心(Linux arm64)
         working-directory: core
         run: |
           mkdir -p ../build-core
           GOOS=linux GOARCH=arm64 go build -o ../build-core/egland ./cmd/egland
-      - name: Flutter 依赖与构建
+      - name: 构建 UI(Linux arm64)
         working-directory: ui
         run: |
           flutter pub get
           flutter build linux --release
-      - name: 打包
+      - name: 打包 AppImage/deb/rpm
         run: |
           chmod +x packaging/linux/package.sh
-          mkdir -p out
           ./packaging/linux/package.sh \
-            'ui/build/linux/arm64/release/bundle' 'arm64' 'build-core/egland' 'out'
+            'ui/build/linux/arm64/release/bundle' 'arm64' 'build-core/egland' 'out' "$APP_VERSION"
       - uses: actions/upload-artifact@v4
-        with: { name: linux-arm64, path: out/* }
+        with:
+          name: EverGreen-LAN-linux-arm64
+          path: out/*.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EverGreen-LAN-linux-arm64-pkg
+          path: |
+            out/*.deb
+            out/*.rpm
 
-  # ---------- macOS arm64 ----------
-  macos-arm64:
+  # ---------- macOS(通用包,同时覆盖 Intel 与 Apple Silicon) ----------
+  macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with: { channel: stable }
       - uses: actions/setup-go@v5
-        with: { go-version: '1.24' }
-      - name: 编译核心(darwin arm64)
+        with: { go-version: '${{ env.GO_VERSION }}' }
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '${{ env.FLUTTER_VERSION }}'
+      - name: 编译核心(darwin universal)
         working-directory: core
         run: |
           mkdir -p ../build-core
-          GOOS=darwin GOARCH=arm64 go build -o ../build-core/egland ./cmd/egland
-      - name: 生成 macOS 脚手架
+          GOOS=darwin GOARCH=amd64 go build -o ../build-core/egland-amd64 ./cmd/egland
+          GOOS=darwin GOARCH=arm64 go build -o ../build-core/egland-arm64 ./cmd/egland
+          lipo -create ../build-core/egland-amd64 ../build-core/egland-arm64 -output ../build-core/egland
+          lipo -info ../build-core/egland
+      - name: 构建 UI(macOS universal)
         working-directory: ui
         run: |
-          if [ ! -d macos ]; then flutter create --platforms=macos .; fi
           flutter pub get
-      - name: 构建 macOS arm64
-        working-directory: ui
-        run: flutter build macos --release --no-codesign
+          flutter build macos --release
       - name: 打包 dmg
         run: |
           chmod +x packaging/macos/package.sh
-          mkdir -p out
+          APP="$(find 'ui/build/macos/Build/Products/Release' -maxdepth 1 -name '*.app' -print -quit)"
+          echo "APP=$APP"
           ./packaging/macos/package.sh \
-            'ui/build/macos/Build/Products/Release/eglan_ui.app' \
-            'build-core/egland' 'out/EverGreen-LAN-macos-arm64.dmg' 'EverGreen LAN ARM'
-          tar -czf app-arm64.tgz -C ui/build/macos/Build/Products/Release eglan_ui.app
+            "$APP" \
+            'build-core/egland' \
+            'out/EverGreen-LAN-macos-universal.dmg' \
+            'EverGreen LAN'
       - uses: actions/upload-artifact@v4
-        with: { name: macos-arm64, path: out/*.dmg }
-      - uses: actions/upload-artifact@v4
-        with: { name: app-arm64, path: app-arm64.tgz }
-
-  # ---------- macOS x64 ----------
-  macos-x64:
-    runs-on: macos-26-intel
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with: { channel: stable }
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.24' }
-      - name: 编译核心(darwin amd64)
-        working-directory: core
-        run: |
-          mkdir -p ../build-core
-          GOOS=darwin GOARCH=amd64 go build -o ../build-core/egland ./cmd/egland
-      - name: 生成 macOS 脚手架
-        working-directory: ui
-        run: |
-          if [ ! -d macos ]; then flutter create --platforms=macos .; fi
-          flutter pub get
-      - name: 构建 macOS x64
-        working-directory: ui
-        run: flutter build macos --release --no-codesign
-      - name: 打包 dmg
-        run: |
-          chmod +x packaging/macos/package.sh
-          mkdir -p out
-          ./packaging/macos/package.sh \
-            'ui/build/macos/Build/Products/Release/eglan_ui.app' \
-            'build-core/egland' 'out/EverGreen-LAN-macos-x64.dmg' 'EverGreen LAN Intel'
-          tar -czf app-x64.tgz -C ui/build/macos/Build/Products/Release eglan_ui.app
-      - uses: actions/upload-artifact@v4
-        with: { name: macos-x64, path: out/*.dmg }
-      - uses: actions/upload-artifact@v4
-        with: { name: app-x64, path: app-x64.tgz }
-
-  # ---------- macOS universal ----------
-  macos-universal:
-    needs: [macos-arm64, macos-x64]
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { name: app-arm64, path: armsrc }
-      - uses: actions/download-artifact@v4
-        with: { name: app-x64, path: x64src }
-      - name: 解包
-        run: |
-          mkdir -p arm x64
-          tar -xzf armsrc/app-arm64.tgz -C arm
-          tar -xzf x64src/app-x64.tgz -C x64
-      - name: lipo 合并二进制
-        run: |
-          APP=arm/eglan_ui.app
-          XAPP=x64/eglan_ui.app
-          lipo -create "$APP/Contents/MacOS/eglan_ui" "$XAPP/Contents/MacOS/eglan_ui" -output "$APP/Contents/MacOS/eglan_ui"
-          lipo -create "$APP/Contents/MacOS/egland" "$XAPP/Contents/MacOS/egland" -output "$APP/Contents/MacOS/egland"
-          FB="$APP/Contents/Frameworks/Flutter.framework/Versions/A/Flutter"
-          XFB="$XAPP/Contents/Frameworks/Flutter.framework/Versions/A/Flutter"
-          if [ -f "$FB" ] && [ -f "$XFB" ]; then lipo -create "$FB" "$XFB" -output "$FB"; fi
-      - name: 打包 universal dmg
-        run: |
-          mkdir -p out
-          hdiutil create -volname 'EverGreen LAN Universal' \
-            -srcfolder arm/eglan_ui.app -ov -format UDZO \
-            'out/EverGreen-LAN-macos-universal.dmg'
-      - uses: actions/upload-artifact@v4
-        with: { name: macos-universal, path: out/*.dmg }
+        with:
+          name: EverGreen-LAN-macos
+          path: out/*.dmg

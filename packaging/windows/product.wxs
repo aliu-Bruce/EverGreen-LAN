@@ -3,36 +3,51 @@
   <Product Id="*"
            Name="EverGreen LAN"
            Language="1033"
-           Version="0.1.0"
+           Version="$(var.Version)"
            Manufacturer="EverGreen LAN"
            UpgradeCode="8F3C2E1A-6B4D-4F8A-9C12-7E5D3A1B0C44">
-    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Platform="x64" />
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of EverGreen LAN is already installed." />
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of EverGreen LAN is already installed." />
     <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon.exe" SourceFile="$(var.SourceDir)\eglan_ui.exe" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.exe" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <UIRef Id="WixUI_InstallDir" />
 
     <Feature Id="MainFeature" Title="EverGreen LAN" Level="1">
       <ComponentGroupRef Id="AppFiles" />
-      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="ApplicationFiles" />
     </Feature>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFilesFolder">
+      <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLFOLDER" Name="EverGreen LAN">
-          <Component Id="ApplicationShortcut" Guid="A1B2C3D4-1111-2222-3333-444455556666">
-            <Shortcut Id="DesktopShortcut" Directory="DesktopFolder"
-                      Name="EverGreen LAN" Target="[INSTALLFOLDER]eglan_ui.exe"
-                      WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
-            <RegistryValue Root="HKCU" Key="Software\EverGreenLAN" Name="installed"
-                           Type="integer" Value="1" KeyPath="yes" />
+          <Component Id="ApplicationFiles"
+                     Guid="A1B2C3D4-1111-2222-3333-444455556666"
+                     Win64="yes">
+            <File Id="EglanUiExe"
+                  Source="$(var.SourceDir)\eglan_ui.exe"
+                  KeyPath="yes" />
+            <Shortcut Id="DesktopShortcut"
+                      Directory="CommonDesktopFolder"
+                      Name="EverGreen LAN"
+                      WorkingDirectory="INSTALLFOLDER"
+                      Icon="AppIcon.exe"
+                      Advertise="yes" />
+            <Shortcut Id="StartMenuShortcut"
+                      Directory="CommonProgramMenuFolder"
+                      Name="EverGreen LAN"
+                      WorkingDirectory="INSTALLFOLDER"
+                      Icon="AppIcon.exe"
+                      Advertise="yes" />
           </Component>
         </Directory>
       </Directory>
-      <Directory Id="DesktopFolder" Name="Desktop" />
+      <Directory Id="CommonDesktopFolder" />
+      <Directory Id="CommonProgramMenuFolder" />
     </Directory>
-
-    <Icon Id="AppIcon" SourceFile="$(var.SourceDir)\eglan_ui.exe" />
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
-    <UIRef Id="WixUI_InstallDir" />
   </Product>
 </Wix>

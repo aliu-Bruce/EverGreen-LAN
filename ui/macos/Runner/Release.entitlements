@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 不启用 App Sandbox:界面需要拉起同包内的 egland 核心,并创建 utun 虚拟网卡。 -->
+</dict>
+</plist>
