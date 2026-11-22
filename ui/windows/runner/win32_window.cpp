@@ -134,8 +134,11 @@ bool Win32Window::Create(const std::wstring& title,
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
+  // Frameless window: dropping WS_CAPTION removes the system title bar while
+  // WS_THICKFRAME keeps native edge resizing, snap and maximize. The custom
+  // title bar only owns the look.
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+      window_class, title.c_str(), WS_OVERLAPPEDWINDOW & ~WS_CAPTION,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -143,6 +146,15 @@ bool Win32Window::Create(const std::wstring& title,
   if (!window) {
     return false;
   }
+
+  // Enforce the frameless style after creation. Some Windows/Flutter startup
+  // paths restore WS_CAPTION from the class default, which would give the
+  // window two title bars: the system one and the Flutter one.
+  SetWindowLongPtr(window, GWL_STYLE,
+                   GetWindowLongPtr(window, GWL_STYLE) & ~WS_CAPTION);
+  SetWindowPos(window, nullptr, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                   SWP_FRAMECHANGED);
 
   // The monitor-DPI probe above can report 96 while the engine is not yet
   // running, which would leave the window at unscaled size on a high-DPI

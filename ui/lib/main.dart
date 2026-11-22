@@ -14,6 +14,7 @@ import 'pages/transfer_page.dart';
 import 'theme.dart';
 import 'widgets/eg.dart';
 import 'widgets/fx.dart';
+import 'widgets/title_bar.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -168,42 +169,47 @@ class _ShellState extends State<Shell> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _followState());
 
     final topMode = app.prefs.navMode == EgNavMode.top;
+    // 桌面三平台为无边框窗口:顶部自绘标题栏,正文整体下移一个标题栏高度。
+    final framed = EgWindow.framed;
     return Scaffold(
       backgroundColor: c.bg,
       body: Stack(
         children: [
           const Positioned.fill(child: EgMist()),
           Positioned.fill(
-            child: Column(
-              children: [
-                if (topMode) TopBar(page: _page, onGo: (p) => setState(() => _page = p)),
-                Expanded(
-                  child: Row(
-                    children: [
-                      if (!topMode) Rail(page: _page, onGo: (p) => setState(() => _page = p)),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(42, 36, 42, 60),
-                          child: Center(
-                            widthFactor: 1,
-                            // 高度也随内容:页面顶对齐,短内容不再飘在页面中部。
-                            heightFactor: 1,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 880),
-                              child: _PageSwitcher(
-                                page: _page,
-                                goHome: () => setState(() => _page = ShellPage.home),
-                                onCreate: _goCreate,
-                                onJoin: _goJoin,
+            child: Padding(
+              padding: EdgeInsets.only(top: framed ? EgTitleBar.height : 0),
+              child: Column(
+                children: [
+                  if (topMode) TopBar(page: _page, onGo: (p) => setState(() => _page = p)),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        if (!topMode) Rail(page: _page, onGo: (p) => setState(() => _page = p)),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(42, 36, 42, 60),
+                            child: Center(
+                              widthFactor: 1,
+                              // 高度也随内容:页面顶对齐,短内容不再飘在页面中部。
+                              heightFactor: 1,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 880),
+                                child: _PageSwitcher(
+                                  page: _page,
+                                  goHome: () => setState(() => _page = ShellPage.home),
+                                  onCreate: _goCreate,
+                                  onJoin: _goJoin,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           if (!app.prefs.onboarded) Onboarding(),
@@ -218,6 +224,11 @@ class _ShellState extends State<Shell> {
                 body: '',
               ),
             ),
+          // 标题栏压在引导层之上,窗口任何时候都能拖动;缩放把手最后盖。
+          if (framed) ...[
+            const Positioned(left: 0, top: 0, right: 0, child: EgTitleBar()),
+            if (EgWindow.needsResizeHandles) const Positioned.fill(child: EgResizeHandles()),
+          ],
         ],
       ),
     );
