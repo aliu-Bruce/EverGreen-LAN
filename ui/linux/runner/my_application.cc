@@ -4,6 +4,13 @@
 
 #include "flutter/generated_plugin_registrant.h"
 
+struct _MyApplication {
+  GtkApplication parent_instance;
+  char** dart_entrypoint_arguments;
+};
+
+G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
 namespace {
 
 // Minimum window size in logical pixels. Mirrors EgTitleBar's layout budget on

@@ -103,7 +103,7 @@ private final class DragOverlayView: NSView {
     if event.clickCount == 2 {
       window?.performZoom(nil)
     } else {
-      window?.performWindowDrag(with: event)
+      window?.performDrag(with: event)
     }
   }
 }

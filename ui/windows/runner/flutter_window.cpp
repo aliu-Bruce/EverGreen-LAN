@@ -139,13 +139,29 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     // The embedder may also constrain the window from its own box constraints;
     // answer first so our minimum size wins. Scale by the window DPI so a
     // high-DPI monitor cannot shrink the window below 960x640 physical pixels.
+    auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
     const UINT dpi = GetDpiForWindow(hwnd);
     if (dpi != 0) {
-      auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
       info->ptMinTrackSize.x =
           MulDiv(kMinWindowWidth, static_cast<int>(dpi), 96);
       info->ptMinTrackSize.y =
           MulDiv(kMinWindowHeight, static_cast<int>(dpi), 96);
+    }
+
+    // A frameless window otherwise maximizes over the taskbar on Windows.
+    // Keep the invisible resize border outside the monitor's work area.
+    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO monitor_info = {};
+    monitor_info.cbSize = sizeof(monitor_info);
+    if (monitor != nullptr && GetMonitorInfo(monitor, &monitor_info)) {
+      const int border = GetSystemMetrics(SM_CXSIZEFRAME) +
+                         GetSystemMetrics(SM_CXPADDEDBORDER);
+      info->ptMaxPosition.x = monitor_info.rcWork.left - border;
+      info->ptMaxPosition.y = monitor_info.rcWork.top - border;
+      info->ptMaxSize.x =
+          monitor_info.rcWork.right - monitor_info.rcWork.left + 2 * border;
+      info->ptMaxSize.y =
+          monitor_info.rcWork.bottom - monitor_info.rcWork.top + 2 * border;
     }
     return 0;
   }
