@@ -19,6 +19,14 @@ class EgWindow {
   /// 只有 Linux 没有原生缩放边框,四周的缩放把手必须自己补。
   static bool get needsResizeHandles => Platform.isLinux;
 
+  /// macOS 的窗口带 `.titled`,顶部那一条仍归 AppKit:它负责原生拖动,
+  /// 并会先吃掉落在里面的鼠标事件。自绘标题行整条排在它下面,
+  /// 按钮与文字因此永远不在系统命中区内,单次点击不会被抢走。
+  static double get reservedTopInset => Platform.isMacOS ? 28 : 0;
+
+  /// 标题栏总高:可视行高加上 macOS 让给系统的那一条。
+  static double get titleBarHeight => EgTitleBar.height + reservedTopInset;
+
   static Future<void> _send(String method, [Object? argument]) async {
     try {
       await _channel.invokeMethod<void>(method, argument);
@@ -56,11 +64,10 @@ class EgWindow {
 class EgTitleBar extends StatefulWidget {
   const EgTitleBar({super.key});
 
-  /// 标题栏高度;窗口正文整体下移同样的距离。
+  /// 标题行可视高度;整条占位见 [EgWindow.titleBarHeight]。
   static const double height = 40;
 
-  /// 右侧按钮簇宽度(3 × 46)。macOS 的原生拖动遮罩按它让位,
-  /// 三平台的拖动区因此都是 [0, 宽度 - 138]。
+  /// 右侧按钮簇宽度(3 × 46)。三平台的拖动区都按它让位。
   static const double buttonsWidth = 138;
 
   @override
@@ -90,7 +97,8 @@ class _EgTitleBarState extends State<EgTitleBar> {
   Widget build(BuildContext context) {
     final c = Eg.of(context).c;
     return Container(
-      height: EgTitleBar.height,
+      height: EgWindow.titleBarHeight,
+      padding: EdgeInsets.only(top: EgWindow.reservedTopInset),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line))),
       child: Row(
         children: [
@@ -143,6 +151,9 @@ class _EgTitleBarState extends State<EgTitleBar> {
 }
 
 // 窗口按钮:悬停时才出底色,关闭键染品牌红并反白图标。
+//
+// 用 Listener 而不是 GestureDetector:按下与抬起都在原处完成才算一次点击,
+// 按下瞬间不做判断,因此不会因为指针抖了几像素就被判成拖动而丢掉这次点击。
 class _TitleButton extends StatefulWidget {
   final IconData icon;
   final bool danger;
@@ -165,9 +176,9 @@ class _TitleButtonState extends State<_TitleButton> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
+      child: Listener(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.onPress,
+        onPointerUp: (_) => widget.onPress(),
         child: Container(
           width: EgTitleBar.buttonsWidth / 3,
           alignment: Alignment.center,
@@ -248,7 +259,7 @@ class EgResizeHandles extends StatelessWidget {
         ),
         Positioned(
           right: 0,
-          top: EgTitleBar.height,
+          top: EgWindow.titleBarHeight,
           bottom: thickness,
           width: thickness,
           child: grab('e', SystemMouseCursors.resizeRight),

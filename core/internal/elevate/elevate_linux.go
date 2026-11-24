@@ -23,7 +23,8 @@ func RunAs(exe string, args []string, hidden bool) error {
 	if _, err := exec.LookPath("pkexec"); err != nil {
 		return fmt.Errorf("系统没有 pkexec,无法在程序内提权;请用 sudo 启动")
 	}
-	out, err := exec.Command("pkexec", "/bin/sh", "-c", shellCommand(exe, args)).CombinedOutput()
+	command := buildShellCommand(exe, args, coreLogPath())
+	out, err := exec.Command("pkexec", "/bin/sh", "-c", command).CombinedOutput()
 	if err != nil {
 		if msg := firstLine(out); msg != "" {
 			return fmt.Errorf("未能以管理员权限启动: %s", msg)
@@ -31,4 +32,14 @@ func RunAs(exe string, args []string, hidden bool) error {
 		return fmt.Errorf("未能以管理员权限启动(可能取消了授权)")
 	}
 	return nil
+}
+
+// buildShellCommand 让 sh 后台拉起核心并立刻退出:pkexec 要等被调程序结束,
+// 前台跑核心会一直挂到核心退出,界面只能看到超时。输出转临时日志,便于回报原因。
+func buildShellCommand(exe string, args []string, logPath string) string {
+	run := quotedCommand(exe, args)
+	if logPath == "" {
+		return run + " >/dev/null 2>&1 &"
+	}
+	return run + " >" + shellQuote(logPath) + " 2>&1 &"
 }

@@ -178,7 +178,7 @@ class _ShellState extends State<Shell> {
           const Positioned.fill(child: EgMist()),
           Positioned.fill(
             child: Padding(
-              padding: EdgeInsets.only(top: framed ? EgTitleBar.height : 0),
+              padding: EdgeInsets.only(top: framed ? EgWindow.titleBarHeight : 0),
               child: Column(
                 children: [
                   if (topMode) TopBar(page: _page, onGo: (p) => setState(() => _page = p)),
