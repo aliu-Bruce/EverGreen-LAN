@@ -305,6 +305,7 @@ class AppState extends ChangeNotifier {
     if (path == null) return langs.t('err.bridgeMissing');
     _elevating = true;
     notifyListeners();
+    await _clearCoreLog();
 
     ServerSocket? server;
     Socket? socket;
@@ -337,7 +338,12 @@ class AppState extends ChangeNotifier {
       return null;
     } on TimeoutException {
       await _restoreCore(path);
-      return langs.t('err.elevateTimeout');
+      // 授权框已经通过、新核心却没连回来:把核心自己写下的失败原因带上,
+      // 否则用户和排查者只能看到一句"超时",永远不知道是权限被拒还是地址被占。
+      final reason = await _readCoreLog();
+      return reason == null
+          ? langs.t('err.elevateTimeout')
+          : '${langs.t('err.elevateTimeout')}($reason)';
     } on IpcError catch (e) {
       await _restoreCore(path);
       return e.message;
@@ -372,6 +378,33 @@ class AppState extends ChangeNotifier {
       _setRoom(RoomState.idle);
     }
   }
+
+  // 提权核心的启动日志。核心由授权工具以 root 拉起,界面拿不到它的 stderr,
+  // 只能事先清空、失败后读回,把"连不回来"的原因转成一句话。
+  static Future<void> _clearCoreLog() async {
+    if (!(Platform.isMacOS || Platform.isLinux)) return;
+    try {
+      final f = File(_coreLogPath);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+  }
+
+  Future<String?> _readCoreLog() async {
+    if (!(Platform.isMacOS || Platform.isLinux)) return null;
+    try {
+      final f = File(_coreLogPath);
+      if (!await f.exists()) return null;
+      final text = (await f.readAsString()).trim();
+      if (text.isEmpty) return null;
+      final line = text.split('\n').first.trim();
+      return line.isEmpty ? null : line;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String get _coreLogPath =>
+      '${Directory.systemTemp.path}${Platform.pathSeparator}egland-core.log';
 
   // 32 位十六进制令牌;核心在回环连接首行报出,界面据此确认对端身份。
   String _randomToken() {
