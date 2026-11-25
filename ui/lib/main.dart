@@ -142,6 +142,8 @@ class _ShellState extends State<Shell> {
     if (!mounted) return;
     if (err == null) {
       setState(() => _page = ShellPage.room);
+      // 开房即自动探测公网映射;探测失败只留在房间页提示,不影响进房。
+      unawaited(app.probePublic());
       return;
     }
     // 权限类错误由 AppState.permissionError 的统一弹框承接(即使已经提权);
@@ -467,7 +469,8 @@ class _RailState extends State<Rail> with SingleTickerProviderStateMixin {
         _from = Offset.lerp(_from, _to, k)!;
         _to = pos;
         _dotCtl.forward(from: 0);
-      } else {
+      } else if (!_shown || !_dotCtl.isAnimating) {
+        // 首次就位,或同页布局变化:直接跟随,不打断在跑的动画。
         _from = pos;
         _to = pos;
         _dotCtl.value = 0;
@@ -713,6 +716,14 @@ class _NavItemState extends State<_NavItem> {
   }
 }
 
+// 顶栏状态文案:房主名为空时不留一个孤零零的冒号。
+String _connectedLabel(AppState app) {
+  final room = app.hostName?.trim() ?? '';
+  return room.isEmpty
+      ? app.langs.t('status.connectedShort')
+      : app.langs.t('status.connected', {'room': room});
+}
+
 // 顶栏导航模式:品牌 + 页签(下滑线指示) + 连接状态。
 class TopBar extends StatefulWidget {
   final ShellPage page;
@@ -780,7 +791,8 @@ class _TopBarState extends State<TopBar> with SingleTickerProviderStateMixin {
         _toL = l;
         _toW = w;
         _indCtl.forward(from: 0);
-      } else {
+      } else if (!_shown || !_indCtl.isAnimating) {
+        // 首次就位,或同页布局变化:直接跟随,不打断在跑的动画。
         _fromL = _toL = l;
         _fromW = _toW = w;
         _indCtl.value = 0;
@@ -879,16 +891,24 @@ class _TopBarState extends State<TopBar> with SingleTickerProviderStateMixin {
             ),
           ),
           if (app.inRoom)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                EgLed(color: c.acc, pulse: true),
-                const SizedBox(width: 8),
-                ScrambleText(
-                  text: app.langs.t('status.connected', {'room': app.hostName ?? ''}),
-                  style: egMono(c, size: 12, color: c.muted),
-                ),
-              ],
+            Container(
+              constraints: const BoxConstraints(maxWidth: 220),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(color: c.panel2, borderRadius: BorderRadius.circular(999)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  EgLed(color: c.acc, pulse: true),
+                  const SizedBox(width: 7),
+                  Flexible(
+                    child: Text(
+                      _connectedLabel(app),
+                      style: egText(c, size: 11.5, color: c.muted),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
         ],
       ),

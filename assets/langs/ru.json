@@ -9,6 +9,7 @@
   "nav.settings": "Настройки",
   "status.tun": "TUN готов",
   "status.connected": "Подключено: {room}",
+  "status.connectedShort": "Подключено",
   "home.h1": "Главная",
   "home.device": "Этот компьютер",
   "home.rename": "Сменить имя",

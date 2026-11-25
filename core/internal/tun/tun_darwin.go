@@ -23,6 +23,8 @@ const (
 	ctlIoCGInfo     = 0xc0644e03 // CTLIOCGINFO = _IOWR('N', 3, struct ctl_info)
 	ctlNameMax      = 96         // MAX_KCTL_NAME
 	defaultMTU      = 1400
+	// utun 的内核控制名是带域名的完整名;写 "utun" 会让 CTLIOCGINFO 直接报 ENOENT。
+	utunControlName = "com.apple.net.utun_control"
 )
 
 // ctl_info:查询 utun 控制接口的 id。
@@ -57,7 +59,7 @@ func New(cfg Config) (Device, error) {
 		return nil, fmt.Errorf("tun: 打开控制套接字失败(需要 root): %w", err)
 	}
 	var info ctlInfo
-	copy(info.name[:], "utun")
+	copy(info.name[:], utunControlName)
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), ctlIoCGInfo, uintptr(unsafe.Pointer(&info)))
 	if errno != 0 {
 		syscall.Close(fd)

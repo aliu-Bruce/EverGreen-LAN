@@ -17,13 +17,12 @@ class EgWindow {
   /// 桌面三平台都改为无边框 + 自绘标题栏;其余平台仍由系统提供窗口装饰。
   static bool get framed => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
-  /// Windows 与 Linux 的窗口都没有系统缩放边框,四周的缩放把手必须自己补。
-  static bool get needsResizeHandles => Platform.isLinux || Platform.isWindows;
+  /// 三平台的窗口都没有系统缩放边框,四周的缩放把手必须自己补。
+  static bool get needsResizeHandles => Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
-  /// macOS 的窗口带 `.titled`,顶部那一条仍归 AppKit:它负责原生拖动,
-  /// 并会先吃掉落在里面的鼠标事件。自绘标题行整条排在它下面,
-  /// 按钮与文字因此永远不在系统命中区内,单次点击不会被抢走。
-  static double get reservedTopInset => Platform.isMacOS ? 28 : 0;
+  /// 三平台标题栏都由 Flutter 自己画。macOS 已去掉 .titled,不再有属于
+  /// AppKit 的顶部保留带,标题行从窗口第一像素开始。
+  static double get reservedTopInset => 0;
 
   /// 标题栏总高:可视行高加上 macOS 让给系统的那一条。
   static double get titleBarHeight => EgTitleBar.height + reservedTopInset;
@@ -60,9 +59,8 @@ class EgWindow {
     }
   }
 
-  /// 把原生窗口的底色设成页面底色。标题栏上方可能露出系统自己的那一层:
-  /// macOS 的透明标题栏、Windows 11 的 1px 边框。原生底色与页面一致后,
-  /// 这层就不再是一条异色的边。
+  /// 把原生窗口的底色设成页面底色。macOS 圆角外沿与 Windows 11 的 1px
+  /// 边框会露出系统底色,同步之后这些缝隙与页面连成一片。
   static Future<void> setBackdrop(Color color) =>
       _send('setBackdrop', color.toARGB32());
 }
@@ -118,8 +116,7 @@ class _EgTitleBarState extends State<EgTitleBar> {
     return Container(
       height: EgWindow.titleBarHeight,
       padding: EdgeInsets.only(top: EgWindow.reservedTopInset),
-      // 整条(含 macOS 让给系统的顶部)统一铺页面底色:标题栏与正文连成
-      // 一面,标题栏上方不再出现系统底色或分隔线。
+      // 整条统一铺页面底色:标题栏与正文连成一面,上方不再出现系统底色。
       color: c.bg,
       child: Row(
         children: [
@@ -211,7 +208,7 @@ class _TitleButtonState extends State<_TitleButton> {
   }
 }
 
-/// Linux 的缩放把手:窗口没有系统边框,四周贴边按下即交给窗口管理器。
+/// 无边框窗口的缩放把手:窗口没有系统边框,四周贴边按下即交给窗口管理器。
 /// 只画命中区,不画任何可见装饰;顶边与右边让出标题栏的按钮簇。
 class EgResizeHandles extends StatelessWidget {
   const EgResizeHandles({super.key});

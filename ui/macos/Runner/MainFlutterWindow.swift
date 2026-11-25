@@ -1,61 +1,50 @@
 import Cocoa
 import FlutterMacOS
 
-// Frameless window. The native side keeps only the window-manager primitives;
-// the title, the buttons and their look are drawn by Flutter.
+// Fully frameless window: no AppKit title strip and no system border. Flutter
+// draws every pixel, including the title row and the rounded corners. The
+// native side only supplies dragging, resizing and the three window actions.
 class MainFlutterWindow: NSWindow {
-  // Must stay in sync with lib/widgets/title_bar.dart:
-  // EgWindow.reservedTopInset, EgTitleBar.height, EgTitleBar.buttonsWidth.
-  private static let reservedTopInset: CGFloat = 28
+  // Keep in sync with lib/widgets/title_bar.dart:
+  // EgTitleBar.height, EgTitleBar.buttonsWidth.
   private static let flutterBarHeight: CGFloat = 40
   private static let flutterButtonsWidth: CGFloat = 138
+  private static let cornerRadius: CGFloat = 12
   private static let minContentWidth: CGFloat = 960
   private static let minContentHeight: CGFloat = 640
 
   private var windowChannel: FlutterMethodChannel?
   private var dragOverlay: NSView?
+  private var zoomedByUs = false
+  private var frameBeforeZoom: NSRect?
+
+  // A borderless window does not become key on its own.
+  override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { true }
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
 
-    // Keep .titled: AppKit owns the rounded corners, the resize border and the
-    // drag strip along the very top of the window.
-    if !styleMask.contains(.titled) {
-      styleMask.insert(.titled)
-    }
-    if !styleMask.contains(.resizable) {
-      styleMask.insert(.resizable)
-    }
-    if !styleMask.contains(.closable) {
-      styleMask.insert(.closable)
-    }
-    if !styleMask.contains(.miniaturizable) {
-      styleMask.insert(.miniaturizable)
-    }
-    // fullSizeContentView lets the Flutter surface paint under the title bar.
-    styleMask.insert(.fullSizeContentView)
-    titlebarAppearsTransparent = true
-    titleVisibility = .hidden
-    // No hairline between the title bar and the Flutter surface: the top strip
-    // has to read as one continuous page background.
-    titlebarSeparatorStyle = .none
-    title = "EverGreen LAN"
-
-    // The brand buttons live in Flutter at the top right, so the system ones
-    // have to go.
-    standardWindowButton(.closeButton)?.isHidden = true
-    standardWindowButton(.miniaturizeButton)?.isHidden = true
-    standardWindowButton(.zoomButton)?.isHidden = true
-
+    styleMask = [.borderless]
     isMovableByWindowBackground = false
+    backgroundColor = .clear
 
     minSize = NSSize(width: Self.minContentWidth, height: Self.minContentHeight)
     contentMinSize = NSSize(width: Self.minContentWidth, height: Self.minContentHeight)
 
-    self.contentViewController = flutterViewController
-    // The xib opens at a template size that is smaller than the app minimum,
-    // and minSize only constrains later drags. Grow the existing frame before
-    // the first frame so the window never opens below 960x640.
+    // Flutter's surface lives in a clipping container so the page itself
+    // paints the rounded corners a borderless window no longer gets from AppKit.
+    let container = NSView(frame: flutterViewController.view.frame)
+    container.wantsLayer = true
+    container.layer?.cornerRadius = Self.cornerRadius
+    container.layer?.masksToBounds = true
+    flutterViewController.view.frame = container.bounds
+    flutterViewController.view.autoresizingMask = [.width, .height]
+    container.addSubview(flutterViewController.view)
+    self.contentView = container
+
+    // The xib opens at a template size below the app minimum. Grow the frame
+    // before the first frame so the window never appears smaller than 960x640.
     growToMinimumSize()
 
     RegisterGeneratedPlugins(registry: flutterViewController)
@@ -65,8 +54,7 @@ class MainFlutterWindow: NSWindow {
     super.awakeFromNib()
   }
 
-  // Enlarges a below-minimum window once and keeps it centered. A window that
-  // is already large enough keeps the frame the xib gave it.
+  // Enlarges a below-minimum window once and keeps it centered.
   private func growToMinimumSize() {
     let minimum = NSSize(width: Self.minContentWidth, height: Self.minContentHeight)
     let current = contentView?.frame.size ?? frame.size
@@ -78,11 +66,8 @@ class MainFlutterWindow: NSWindow {
     center()
   }
 
-  // AppKit's title bar keeps the top `reservedTopInset` points of the window for
-  // itself and swallows presses there, so Flutter draws its own title row just
-  // below that strip and this overlay covers exactly the Flutter row, minus the
-  // button cluster. The buttons therefore stay fully reachable for Flutter and
-  // the rest of the row still moves the window natively.
+  // Transparent hit region over the Flutter title row. A press hands the window
+  // to the window server for a native drag; double click toggles our own zoom.
   private func installDragOverlay() {
     guard let content = contentView else { return }
     let overlay = DragOverlayView()
@@ -92,15 +77,14 @@ class MainFlutterWindow: NSWindow {
       overlay.leadingAnchor.constraint(equalTo: content.leadingAnchor),
       overlay.trailingAnchor.constraint(
         equalTo: content.trailingAnchor, constant: -Self.flutterButtonsWidth),
-      overlay.topAnchor.constraint(equalTo: content.topAnchor,
-                                  constant: Self.reservedTopInset),
+      overlay.topAnchor.constraint(equalTo: content.topAnchor),
       overlay.heightAnchor.constraint(equalToConstant: Self.flutterBarHeight),
     ])
     dragOverlay = overlay
   }
 
-  // Window buttons and the maximized-state query. startMove/startResize are not
-  // implemented here: the overlay above and AppKit's resize border own dragging.
+  // Window actions, maximized-state query and the palette mirror. Resizing is
+  // driven by Flutter's edge handles through startResize below.
   private func installWindowChannel(_ controller: FlutterViewController) {
     let channel = FlutterMethodChannel(
       name: "eglan/window",
@@ -116,19 +100,18 @@ class MainFlutterWindow: NSWindow {
         self.miniaturize(nil)
         result(nil)
       case "maximizeToggle":
-        self.zoom(nil)
+        self.toggleZoom()
         result(nil)
       case "close":
-        // One window per app: closing it is quitting. Terminating explicitly is
-        // deterministic, while close() only orders the window out and can leave
-        // the engine and the core child process alive.
+        // One window per app: terminating is deterministic, while close() can
+        // leave the engine and the core child process alive.
         result(nil)
         NSApp.terminate(nil)
       case "isMaximized":
-        result(self.isZoomed)
+        result(self.zoomedByUs || self.isZoomed)
       case "setBackdrop":
-        // Flutter owns the palette; mirroring it on the window keeps the native
-        // title-bar strip invisible instead of showing the wallpaper tint.
+        // Sits behind the Flutter surface, visible only through the rounded
+        // corners; keep it in step with the page palette.
         if let argb = (call.arguments as? NSNumber)?.intValue {
           let red = CGFloat((argb >> 16) & 0xFF) / 255.0
           let green = CGFloat((argb >> 8) & 0xFF) / 255.0
@@ -136,16 +119,77 @@ class MainFlutterWindow: NSWindow {
           self.backgroundColor = NSColor(srgbRed: red, green: green, blue: blue, alpha: 1)
         }
         result(nil)
+      case "startResize":
+        guard let edge = call.arguments as? String else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        self.startResize(edge)
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }
     }
   }
+
+  // Borderless windows have no native zoom button, so keep the previous frame
+  // ourselves and use the monitor's visible frame (never covering the dock).
+  func toggleZoom() {
+    if zoomedByUs, let previous = frameBeforeZoom {
+      setFrame(previous, display: true)
+      frameBeforeZoom = nil
+      zoomedByUs = false
+      return
+    }
+    guard let screen = screen ?? NSScreen.main else { return }
+    frameBeforeZoom = frame
+    setFrame(screen.visibleFrame, display: true)
+    zoomedByUs = true
+  }
+
+  // Follow an edge drag with a frame resize loop. Screen coordinates are used
+  // directly so the grab point does not jump at the first movement.
+  private func startResize(_ edge: String) {
+    let start = NSEvent.mouseLocation
+    let original = frame
+    var left = original.minX
+    var right = original.maxX
+    var bottom = original.minY
+    var top = original.maxY
+    let mask: NSEvent.EventTypeMask = [.leftMouseDragged, .leftMouseUp]
+
+    while let event = NSApp.nextEvent(
+      mask: mask, until: Date.distantFuture, inMode: .eventTracking, dequeue: true) {
+      if event.type == .leftMouseUp { break }
+      let now = NSEvent.mouseLocation
+      let dx = now.x - start.x
+      let dy = now.y - start.y
+      if edge.contains("w") { left = original.minX + dx }
+      if edge.contains("e") { right = original.maxX + dx }
+      if edge.contains("s") { bottom = original.minY + dy }
+      if edge.contains("n") { top = original.maxY + dy }
+      if right - left < Self.minContentWidth {
+        if edge.contains("w") {
+          left = right - Self.minContentWidth
+        } else {
+          right = left + Self.minContentWidth
+        }
+      }
+      if top - bottom < Self.minContentHeight {
+        if edge.contains("s") {
+          bottom = top - Self.minContentHeight
+        } else {
+          top = bottom + Self.minContentHeight
+        }
+      }
+      setFrame(NSRect(x: left, y: bottom, width: right - left, height: top - bottom),
+               display: true)
+    }
+  }
 }
 
 // Transparent hit region over the Flutter title row. Nothing is drawn; a press
-// only hands the window to the window server for a native drag, so screen-edge
-// snapping and Space switching keep working.
+// only hands the window to the window server for a native drag.
 private final class DragOverlayView: NSView {
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
     return true
@@ -153,7 +197,7 @@ private final class DragOverlayView: NSView {
 
   override func mouseDown(with event: NSEvent) {
     if event.clickCount == 2 {
-      window?.performZoom(nil)
+      (window as? MainFlutterWindow)?.toggleZoom()
     } else {
       window?.performDrag(with: event)
     }

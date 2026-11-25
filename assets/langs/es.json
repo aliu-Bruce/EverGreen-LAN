@@ -9,6 +9,7 @@
   "nav.settings": "Ajustes",
   "status.tun": "TUN listo",
   "status.connected": "Conectado: {room}",
+  "status.connectedShort": "Conectado",
   "home.h1": "Inicio",
   "home.device": "Este equipo",
   "home.rename": "Cambiar nombre",

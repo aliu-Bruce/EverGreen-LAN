@@ -9,6 +9,7 @@
   "nav.settings": "Settings",
   "status.tun": "TUN ready",
   "status.connected": "Connected: {room}",
+  "status.connectedShort": "Connected",
   "home.h1": "Home",
   "home.device": "This device",
   "home.rename": "Rename",

@@ -9,6 +9,7 @@
   "nav.settings": "설정",
   "status.tun": "TUN 준비됨",
   "status.connected": "연결됨: {room}",
+  "status.connectedShort": "연결됨",
   "home.h1": "홈",
   "home.device": "이 기기",
   "home.rename": "이름 변경",

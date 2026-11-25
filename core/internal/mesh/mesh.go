@@ -25,6 +25,7 @@ const (
 	replyMagic  = "EGLANH2" // 主机 → 成员(明文):公钥 + 名字
 	readyMagic  = "EGLANR1" // 成员 → 主机(加密):入房证明,凭房间码才造得出
 	assignMagic = "EGLANA1" // 主机 → 成员(加密):分配的隧道地址
+	leaveMagic  = "EGLANE1" // 成员 → 主机(加密):离房,撤销已分配的地址与名册记录
 
 	nameMax    = 32
 	pendingTTL = 10 * time.Second
@@ -89,13 +90,14 @@ func Bind(port int) (*net.UDPConn, error) {
 
 // Guest 是房间里普通成员的一端:与主机一条加密通道,包都经主机中转。
 type Guest struct {
-	pc       *net.UDPConn
-	remote   *net.UDPAddr
-	sess     *crypto.Session
-	pub      []byte
-	hostName string
-	selfNet  *net.IPNet
-	flow     *stream.Session
+	pc        *net.UDPConn
+	remote    *net.UDPAddr
+	sess      *crypto.Session
+	pub       []byte
+	hostName  string
+	selfNet   *net.IPNet
+	flow      *stream.Session
+	closeOnce sync.Once
 }
 
 // DialGuest 向主机发起加入:握手 → 入房证明 → 领取地址。
@@ -152,6 +154,8 @@ func DialGuest(addr string, psk []byte, id *crypto.Identity, name string, timeou
 	for {
 		attempt := min(2*time.Second, time.Until(deadline))
 		if attempt <= 0 {
+			// 主机可能已收到证明并分配了地址,只是回包丢了;先撤销登记。
+			_, _ = pc.WriteToUDP(sess.Seal([]byte(leaveMagic)), from)
 			pc.Close()
 			return nil, fmt.Errorf("mesh: 等待地址分配超时(房间码不对或主机已满)")
 		}
@@ -252,12 +256,22 @@ func (g *Guest) HostIP() net.IP { return g.hostTunnelIP() }
 // PeerPub 返回主机公钥副本。
 func (g *Guest) PeerPub() []byte { return append([]byte(nil), g.pub...) }
 
-// Close 关闭套接字与全部流。
+// Close 通知主机撤销自己的名册记录,然后关闭套接字与全部流。
+// 主机在入房证明通过时就已把成员写入名册;不通知会让失败重连逐个留下幽灵成员。
 func (g *Guest) Close() error {
-	if g.flow != nil {
-		g.flow.Close()
-	}
-	return g.pc.Close()
+	var err error
+	g.closeOnce.Do(func() {
+		if g.flow != nil {
+			g.flow.Close()
+		}
+		if g.pc != nil {
+			if g.sess != nil && g.remote != nil {
+				_, _ = g.pc.WriteToUDP(g.sess.Seal([]byte(leaveMagic)), g.remote)
+			}
+			err = g.pc.Close()
+		}
+	})
+	return err
 }
 
 // ------------------------------------------------------------
@@ -283,6 +297,10 @@ func isAssign(payload []byte) bool {
 
 func isReady(payload []byte) bool {
 	return len(payload) == len(readyMagic) && string(payload) == readyMagic
+}
+
+func isLeave(payload []byte) bool {
+	return len(payload) == len(leaveMagic) && string(payload) == leaveMagic
 }
 
 // isFlood 判断目的地址是否要向全房间复制:受限广播、子网广播、组播。
@@ -441,6 +459,10 @@ func (h *Host) handle(from *net.UDPAddr, frame []byte) {
 		}
 		h.admit(m)
 		h.sendAssign(m)
+		return
+	}
+	if isLeave(payload) {
+		h.removeMember(m) // 成员离房或建网卡失败,撤销名册与地址
 		return
 	}
 	if isReady(payload) {
@@ -734,6 +756,17 @@ func (h *Host) emit(pkt []byte) {
 		return
 	case h.localOut <- pkt:
 	default:
+	}
+}
+
+// removeMember 从三张索引里彻底摘掉一个成员,并把隧道地址还回地址池。
+func (h *Host) removeMember(m *member) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.byAddr, m.addr.String())
+	delete(h.byPub, m.pub)
+	if m.ip != nil {
+		delete(h.byIP, m.ip.String())
 	}
 }
 

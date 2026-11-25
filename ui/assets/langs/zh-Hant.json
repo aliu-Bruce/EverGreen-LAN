@@ -9,6 +9,7 @@
   "nav.settings": "設定",
   "status.tun": "TUN 就緒",
   "status.connected": "已連線:{room}",
+  "status.connectedShort": "已連線",
   "home.h1": "主頁",
   "home.device": "本機",
   "home.rename": "重新命名",
