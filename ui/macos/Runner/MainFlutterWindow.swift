@@ -159,7 +159,7 @@ class MainFlutterWindow: NSWindow {
     let mask: NSEvent.EventTypeMask = [.leftMouseDragged, .leftMouseUp]
 
     while let event = NSApp.nextEvent(
-      mask: mask, until: Date.distantFuture, inMode: .eventTracking, dequeue: true) {
+      matching: mask, until: Date.distantFuture, inMode: .eventTracking, dequeue: true) {
       if event.type == .leftMouseUp { break }
       let now = NSEvent.mouseLocation
       let dx = now.x - start.x
