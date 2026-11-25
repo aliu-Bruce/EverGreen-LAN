@@ -22,10 +22,11 @@ void main() {
     expect(app.permissionRetryKind, isNull);
   });
 
-  test('已提权后不再写入统一字段', () {
+  test('已提权仍记录权限错误,失败原因必须可见', () {
     final app = AppState()..admin = true;
     app.reportPermissionError('建虚拟网卡失败(需要管理员权限)', retryKind: 'join');
-    expect(app.permissionError, isNull);
+    expect(app.permissionError, '建虚拟网卡失败(需要管理员权限)');
+    expect(app.permissionRetryKind, 'join');
   });
 
   test('清空后字段与重试标识都复位', () {

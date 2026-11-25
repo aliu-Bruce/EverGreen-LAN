@@ -90,6 +90,21 @@ void window_method_call_cb(FlMethodChannel* channel,
     g_autoptr(FlValue) result =
         fl_value_new_bool(gtk_window_is_maximized(window));
     fl_method_call_respond_success(method_call, result, &error);
+  } else if (g_str_equal(method, "setBackdrop")) {
+    FlValue* args = fl_method_call_get_args(method_call);
+    if (args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_INT) {
+      const int64_t argb = fl_value_get_int(args);
+      GdkRGBA colour;
+      colour.red = ((argb >> 16) & 0xFF) / 255.0;
+      colour.green = ((argb >> 8) & 0xFF) / 255.0;
+      colour.blue = (argb & 0xFF) / 255.0;
+      colour.alpha = 1.0;
+      GtkWidget* child = gtk_bin_get_child(GTK_BIN(window));
+      if (child != nullptr && FL_IS_VIEW(child)) {
+        fl_view_set_background_color(FL_VIEW(child), &colour);
+      }
+    }
+    fl_method_call_respond_success(method_call, nullptr, &error);
   } else if (g_str_equal(method, "startMove") ||
              g_str_equal(method, "startResize")) {
     gint root_x = 0;
@@ -180,9 +195,10 @@ static void my_application_activate(GApplication* application) {
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
-  // Background defaults to black, override it here if necessary, e.g. #00000000
-  // for transparent.
-  gdk_rgba_parse(&background_color, "#000000");
+  // Match the app's light page background instead of the black default, so the
+  // first frame and window resizes never flash a dark edge around the surface.
+  // Flutter replaces it with the live theme colour on the first build.
+  gdk_rgba_parse(&background_color, "#F2EDE2");
   fl_view_set_background_color(view, &background_color);
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));

@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 
+#include <dwmapi.h>
 #include <flutter/encodable_value.h>
 
 #include <optional>
@@ -9,6 +10,18 @@
 #include "flutter/generated_plugin_registrant.h"
 
 namespace {
+
+// Windows 11 border colour. Not in older SDK headers.
+#ifndef DWMWA_BORDER_COLOR
+#define DWMWA_BORDER_COLOR 34
+#endif
+// Windows 11 corner preference. Not in older SDK headers.
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+
+// DWMWCP_ROUND. Maximized windows stay square, matching stock Windows apps.
+constexpr int kDwmCornerRound = 2;
 
 // Minimum window size in logical pixels. Handled before the Flutter embedder
 // gets a chance to answer WM_GETMINMAXINFO, so the custom title bar's layout
@@ -68,6 +81,29 @@ void FlutterWindow::SetupWindowChannel() {
           result->Success();
         } else if (method == "isMaximized") {
           result->Success(flutter::EncodableValue(::IsZoomed(hwnd) != 0));
+        } else if (method == "setBackdrop") {
+          const auto* args = call.arguments();
+          int64_t argb = -1;
+          if (args != nullptr) {
+            if (std::holds_alternative<int32_t>(*args)) {
+              argb = std::get<int32_t>(*args);
+            } else if (std::holds_alternative<int64_t>(*args)) {
+              argb = std::get<int64_t>(*args);
+            }
+          }
+          if (argb < 0) {
+            result->Error("bad_color", "backdrop colour missing");
+            return;
+          }
+          // COLORREF is 0x00BBGGRR. The DWM 1px border would otherwise show
+          // the system accent colour as a stray line around the window.
+          const COLORREF colour =
+              RGB(static_cast<BYTE>((argb >> 16) & 0xFF),
+                  static_cast<BYTE>((argb >> 8) & 0xFF),
+                  static_cast<BYTE>(argb & 0xFF));
+          ::DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &colour,
+                                  sizeof(colour));
+          result->Success();
         } else if (method == "startMove" || method == "startResize") {
           UINT hit = HTCAPTION;
           if (method == "startResize") {
@@ -92,6 +128,15 @@ void FlutterWindow::SetupWindowChannel() {
 bool FlutterWindow::OnCreate() {
   if (!Win32Window::OnCreate()) {
     return false;
+  }
+
+  // A window whose client area covers the whole frame (WM_NCCALCSIZE) loses
+  // the automatic Windows 11 rounding. Ask DWM for it explicitly; older
+  // Windows versions ignore the attribute.
+  const HWND hwnd = GetHandle();
+  if (hwnd != nullptr) {
+    ::DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+                            &kDwmCornerRound, sizeof(kDwmCornerRound));
   }
 
   RECT frame = GetClientArea();
@@ -149,19 +194,18 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     }
 
     // A frameless window otherwise maximizes over the taskbar on Windows.
-    // Keep the invisible resize border outside the monitor's work area.
+    // The client area now covers the whole window (WM_NCCALCSIZE), so the
+    // maximized window is exactly the monitor work area.
     HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
     MONITORINFO monitor_info = {};
     monitor_info.cbSize = sizeof(monitor_info);
     if (monitor != nullptr && GetMonitorInfo(monitor, &monitor_info)) {
-      const int border = GetSystemMetrics(SM_CXSIZEFRAME) +
-                         GetSystemMetrics(SM_CXPADDEDBORDER);
-      info->ptMaxPosition.x = monitor_info.rcWork.left - border;
-      info->ptMaxPosition.y = monitor_info.rcWork.top - border;
+      info->ptMaxPosition.x = monitor_info.rcWork.left;
+      info->ptMaxPosition.y = monitor_info.rcWork.top;
       info->ptMaxSize.x =
-          monitor_info.rcWork.right - monitor_info.rcWork.left + 2 * border;
+          monitor_info.rcWork.right - monitor_info.rcWork.left;
       info->ptMaxSize.y =
-          monitor_info.rcWork.bottom - monitor_info.rcWork.top + 2 * border;
+          monitor_info.rcWork.bottom - monitor_info.rcWork.top;
     }
     return 0;
   }

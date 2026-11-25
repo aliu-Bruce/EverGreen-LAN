@@ -1,6 +1,7 @@
 // 自绘标题栏:窗口去掉系统边框后,标题、拖动与窗口按钮全部自己画。
 // 原生侧只保留三件事——移动/缩放交给窗口管理器、最小化最大化关闭、
 // 报告最大化状态;三平台共用同一条 eglan/window 方法通道。
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
@@ -16,8 +17,8 @@ class EgWindow {
   /// 桌面三平台都改为无边框 + 自绘标题栏;其余平台仍由系统提供窗口装饰。
   static bool get framed => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
-  /// 只有 Linux 没有原生缩放边框,四周的缩放把手必须自己补。
-  static bool get needsResizeHandles => Platform.isLinux;
+  /// Windows 与 Linux 的窗口都没有系统缩放边框,四周的缩放把手必须自己补。
+  static bool get needsResizeHandles => Platform.isLinux || Platform.isWindows;
 
   /// macOS 的窗口带 `.titled`,顶部那一条仍归 AppKit:它负责原生拖动,
   /// 并会先吃掉落在里面的鼠标事件。自绘标题行整条排在它下面,
@@ -58,6 +59,12 @@ class EgWindow {
       return false;
     }
   }
+
+  /// 把原生窗口的底色设成页面底色。标题栏上方可能露出系统自己的那一层:
+  /// macOS 的透明标题栏、Windows 11 的 1px 边框。原生底色与页面一致后,
+  /// 这层就不再是一条异色的边。
+  static Future<void> setBackdrop(Color color) =>
+      _send('setBackdrop', color.toARGB32());
 }
 
 /// 自绘标题栏:左边是标题与整片拖动区,右边是三个窗口按钮。
@@ -76,11 +83,23 @@ class EgTitleBar extends StatefulWidget {
 
 class _EgTitleBarState extends State<EgTitleBar> {
   bool _maximized = false;
+  int? _backdrop;
 
   @override
   void initState() {
     super.initState();
     _followMaximize();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 主题切换后重新同步原生底色;同一颜色只发一次。
+    final bg = Eg.of(context).c.bg;
+    final argb = bg.toARGB32();
+    if (argb == _backdrop) return;
+    _backdrop = argb;
+    unawaited(EgWindow.setBackdrop(bg));
   }
 
   // 轮询跟随最大化状态:原生侧没有状态变化的上行事件。
@@ -99,7 +118,9 @@ class _EgTitleBarState extends State<EgTitleBar> {
     return Container(
       height: EgWindow.titleBarHeight,
       padding: EdgeInsets.only(top: EgWindow.reservedTopInset),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line))),
+      // 整条(含 macOS 让给系统的顶部)统一铺页面底色:标题栏与正文连成
+      // 一面,标题栏上方不再出现系统底色或分隔线。
+      color: c.bg,
       child: Row(
         children: [
           // 拖动区:按下即把指针交给窗口管理器,移动全程由系统接管。

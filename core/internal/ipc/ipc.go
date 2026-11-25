@@ -352,6 +352,15 @@ func (b *Bridge) requestQuit() {
 	b.quitOnce.Do(func() { close(b.quit) })
 }
 
+// tunFailure 给建虚拟网卡失败补上下文:未提权时点明需要管理员权限;
+// 已经以管理员运行时只保留底层原因,避免界面同时显示“已提权”和“需要管理员”。
+func tunFailure(err error) string {
+	if elevate.Admin() {
+		return fmt.Sprintf("建虚拟网卡失败: %v", err)
+	}
+	return fmt.Sprintf("建虚拟网卡失败(需要管理员权限): %v", err)
+}
+
 // opStartHost 开房间:建卡(需管理员)→ 放行 → 监听 → 收泵。
 // 本地操作,同步完成并应答;失败时状态不变。
 func (b *Bridge) opStartHost(req request) {
@@ -402,7 +411,7 @@ func (b *Bridge) opStartHost(req request) {
 	}
 	dev, err := newTun(tun.Config{Name: adapter, CIDR: cidr, MTU: mtu})
 	if err != nil {
-		b.errID(req.ID, "建虚拟网卡失败(需要管理员权限): %v", err)
+		b.errID(req.ID, "%s", tunFailure(err))
 		return
 	}
 	_ = openFirewall(listen)
@@ -494,7 +503,7 @@ func (b *Bridge) opJoin(req request) {
 		dev, err := newTun(tun.Config{Name: adapter, CIDR: cidr, MTU: mtu})
 		if err != nil {
 			g.Close()
-			b.joinFailed(jid, fmt.Errorf("建虚拟网卡失败(需要管理员权限): %w", err))
+			b.joinFailed(jid, fmt.Errorf("%s", tunFailure(err)))
 			return
 		}
 		b.mu.Lock()

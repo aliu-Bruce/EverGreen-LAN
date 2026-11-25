@@ -222,6 +222,15 @@ Win32Window::MessageHandler(HWND hwnd,
 
       return 0;
     }
+    case WM_NCCALCSIZE:
+      // Make the client area cover the whole window. The default frame leaves
+      // a system-coloured strip around the window, which reads as a stray
+      // border above the custom title bar. Flutter supplies the resize
+      // handles and drives the native sizing loop through WM_NCLBUTTONDOWN.
+      if (wparam == TRUE) {
+        return 0;
+      }
+      break;
     case WM_SIZE: {
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {

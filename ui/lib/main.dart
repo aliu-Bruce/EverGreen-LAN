@@ -132,16 +132,22 @@ class _ShellState extends State<Shell> {
 
   void _goCreate() async {
     final app = AppState.of(context);
-    final err = await app.createRoom();
-    if (!mounted) return;
-    if (err != null) {
-      // 权限错误走 AppState.permissionError 的统一弹框,这里只兜底非权限错误。
-      if (!(err.contains('管理员权限') || err.contains('权限被拒'))) {
-        _showCoreError(context, err, onRetry: null);
-      }
-    } else {
-      setState(() => _page = ShellPage.room);
+    String? err;
+    try {
+      err = await app.createRoom();
+    } catch (e) {
+      // createRoom 之外的意外异常也必须落到界面上,不能停在“点了没反应”。
+      err = e.toString();
     }
+    if (!mounted) return;
+    if (err == null) {
+      setState(() => _page = ShellPage.room);
+      return;
+    }
+    // 权限类错误由 AppState.permissionError 的统一弹框承接(即使已经提权);
+    // 其余失败在这里当场给出原文,尤其是管理员权限下仍然建卡失败的情况。
+    if (err.contains('管理员权限') || err.contains('权限被拒')) return;
+    _showCoreError(context, err, onRetry: null);
   }
 
   void _goJoin() => setState(() => _page = ShellPage.join);
@@ -270,6 +276,13 @@ class _CoreErrorDialogState extends State<_CoreErrorDialog> {
     retry?.call(); // 核心已提权,直接重试刚才的开房动作
   }
 
+  // 已经提权仍然失败时不再给提权入口,但保留一次原样重试。
+  void _retry() {
+    final retry = widget.onRetry;
+    Navigator.of(context).pop();
+    retry?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppState.of(context);
@@ -317,6 +330,14 @@ class _CoreErrorDialogState extends State<_CoreErrorDialog> {
                       kind: EgBtnKind.primary,
                       small: true,
                       onPressed: _busy ? null : _restart,
+                    ),
+                  ] else if (widget.onRetry != null) ...[
+                    const SizedBox(width: 8),
+                    EgButton(
+                      label: app.langs.t('btn.retry'),
+                      kind: EgBtnKind.primary,
+                      small: true,
+                      onPressed: _busy ? null : _retry,
                     ),
                   ],
                 ],

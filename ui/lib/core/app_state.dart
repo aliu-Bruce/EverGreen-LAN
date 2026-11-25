@@ -107,12 +107,13 @@ class AppState extends ChangeNotifier {
   String? _permissionRetryKind; // 'create' / 'join',提权成功后重试哪一个动作
   Map<String, dynamic>? _lastJoinArgs; // 最近一次入房参数,供提权后重试
 
-  // 只有权限类错误才写统一字段;其余失败由各调用方自行展示。
+  // 只有权限类错误才写统一字段;一律上报,即使当前已经是管理员:
+  // 提权之后建卡仍可能失败,那条原因必须让用户看见,不能因为“已是管理员”就静默。
   bool _needsAdmin(String message) =>
       message.contains('管理员权限') || message.contains('权限被拒');
 
   void reportPermissionError(String message, {String? retryKind}) {
-    if (!_needsAdmin(message) || admin == true) return;
+    if (!_needsAdmin(message)) return;
     permissionError = message;
     _permissionRetryKind = retryKind;
     notifyListeners();
